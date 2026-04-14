@@ -29,22 +29,24 @@ def load_data():
         d.setdefault("events", [])
         d.setdefault("next_event_id", 1)
         d.setdefault("collapsed_cats", [])
+        d.setdefault("mood", {})
         for h in d.get("habits", []):
             h.setdefault("starred", False)
         return d
-    s = {"events": [], "next_event_id": 1, "habits": [
-        {"id": 1, "name": "Despertar a las 6am", "created": _today(), "color": "#ffd93d", "type": "boolean", "target": None, "category": "Salud"},
-        {"id": 2, "name": "Hacer la cama", "created": _today(), "color": "#6bcb77", "type": "boolean", "target": None, "category": "Salud"},
-        {"id": 3, "name": "Entrenar 30 min", "created": _today(), "color": "#4d96ff", "type": "boolean", "target": None, "category": "Salud"},
-        {"id": 4, "name": "Deep work 2h", "created": _today(), "color": "#ff922b", "type": "boolean", "target": None, "category": "Trabajo"},
-        {"id": 5, "name": "Leer 20 páginas", "created": _today(), "color": "#cc5de8", "type": "boolean", "target": None, "category": "Aprendizaje"},
-        {"id": 6, "name": "Vasos de agua", "created": _today(), "color": "#20c997", "type": "counter", "target": 8, "category": "Salud"},
-        {"id": 7, "name": "Estado de ánimo", "created": _today(), "color": "#f06595", "type": "rating", "target": 5, "category": "Personal"},
-        {"id": 8, "name": "Nota del día", "created": _today(), "color": "#cc5de8", "type": "note", "target": None, "category": "Personal"},
-        {"id": 9, "name": "Caminar 10k", "created": _today(), "color": "#4d96ff", "type": "counter", "target": 10000, "category": "Salud"},
-    ], "logs": {}, "next_id": 10, "categories": DEFAULT_CATS[:],
-        "sleep": {}, "journal": {}, "goals": [], "next_goal_id": 1,
-        "collapsed_cats": []}
+    s = {
+        "habits":         [],
+        "logs":           {},
+        "next_id":        1,
+        "categories":     DEFAULT_CATS[:],
+        "sleep":          {},
+        "journal":        {},
+        "goals":          [],
+        "next_goal_id":   1,
+        "events":         [],
+        "next_event_id":  1,
+        "collapsed_cats": [],
+        "mood":           {},
+    }
     save_data(s)
     return s
 

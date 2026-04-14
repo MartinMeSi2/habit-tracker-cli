@@ -10,11 +10,11 @@ from rich.align import Align
 from rich.rule import Rule
 from rich import box
 from constants import (P, BADGES, SPARKS, HABIT_COLORS, SLEEP_COLORS, EVENT_TYPES,
-                       HEAT_COLORS, _DIAS, _MESES, console)
+                       HEAT_COLORS, _DIAS, _MESES, MOODS, console)
 from data import (overall_today, weekly_stats, get_streak, get_rate, get_badge,
                   sparkline_vals, make_spark, sleep_color, _build_ordered, _is_done,
                   _event_matches, _period_rate, _avg_rate_month, _heat_intensity,
-                  _build_navigable)
+                  _build_navigable, _today)
 
 
 def _hr(c=None):
@@ -84,8 +84,8 @@ def make_today_strip(data):
     comp, total, pct = overall_today(data)
     c = P["green"] if pct >= 80 else P["yellow"] if pct >= 50 else P["red"]
     sl_h = data.get("sleep", {}).get(_today())
-    gd = sum(1 for g in data.get("goals", []) if g["done"] and g["type"] == "weekly")
-    gt = sum(1 for g in data.get("goals", []) if g["type"] == "weekly")
+    gd = sum(1 for g in data.get("goals", []) if g.get("done") and g.get("type") == "weekly")
+    gt = sum(1 for g in data.get("goals", []) if g.get("type") == "weekly")
     j = bool(data.get("journal", {}).get(_today()))
     t = Text()
     t.append(f" 📋 {comp}/{total} ({pct:.0f}%)", style=f"bold {c}")
@@ -246,44 +246,41 @@ def make_habits_panel(data, cursor, scroll=0, row_budget=None):
             last_visible_cursor)
 
 
-def make_charts_panel(data):
+def make_semana_panel(data):
+    """Panel izquierdo del área charts: HOY + barras semanales."""
     comp_t, total_t, pct_t = overall_today(data)
     weekly = weekly_stats(data)
-    t = Text(justify="center")
+    t = Text(justify="left")
     c = P["green"] if pct_t >= 80 else P["yellow"] if pct_t >= 50 else P["red"]
-    t.append(f"\n  ◈ HOY  ", style=f"bold {P['muted']}")
+    t.append(f"\n ◈ HOY  ", style=f"bold {P['muted']}")
     t.append(f"{comp_t}/{total_t}  ", style=f"bold {P['blue']}")
-    t.append(f"{pct_t:.0f}%\n  ", style=f"bold {c}")
+    t.append(f"{pct_t:.0f}%\n ", style=f"bold {c}")
     t.append_text(mini_ring(pct_t))
-    t.append("\n\n")
-    t.append("  ◈ SEMANA\n", style=f"bold {P['muted']}")
+    t.append("\n\n ◈ SEMANA\n", style=f"bold {P['muted']}")
     for day_l, comp, total in weekly:
         pct = comp / total * 100 if total > 0 else 0
-        filled = int(pct / 100 * 12)
+        filled = int(pct / 100 * 10)
         color = P["green"] if pct >= 80 else P["yellow"] if pct >= 50 else P["red"]
         is_tod = day_l == date.today().strftime("%a")
-        t.append(f"  {'▶' if is_tod else ' '}{day_l} ",
+        t.append(f" {'▶' if is_tod else ' '}{day_l} ",
                  style=f"bold {P['blue']}" if is_tod else P["muted"])
         t.append("█" * filled, style=f"bold {color}")
-        t.append("░" * (12 - filled), style="dim")
+        t.append("░" * (10 - filled), style="dim")
         t.append(f" {pct:3.0f}%\n", style=color)
-    from data import _today
-    sl = (data.get("sleep", {}).get(_today()) or
-          data.get("sleep", {}).get((date.today() - timedelta(days=1)).isoformat()))
-    t.append(f"\n  ◈ SUEÑO\n", style=f"bold {P['muted']}")
-    if sl:
-        t.append("  ")
-        t.append_text(sleep_bar_text(sl, 10))
-        t.append("\n")
-    else:
-        t.append(f"  [dim]Sin registro · S[/dim]\n")
-    t.append(f"\n  ◈ TOP RACHAS\n", style=f"bold {P['muted']}")
-    top4 = sorted(data["habits"], key=lambda h: get_streak(data, h["id"]), reverse=True)[:4]
-    for h in top4:
+    return Panel(t, title=f"[bold {P['yellow']}]📅  Semana[/bold {P['yellow']}]",
+                 border_style=P["border"])
+
+
+def make_top_rachas_panel(data):
+    """Panel central del área charts: top rachas + comparativa."""
+    top6 = sorted(data["habits"], key=lambda h: get_streak(data, h["id"]), reverse=True)[:6]
+    t = Text(justify="left")
+    t.append("\n ◈ TOP RACHAS\n", style=f"bold {P['muted']}")
+    for h in top6:
         s = get_streak(data, h["id"])
         e_b, _, _ = get_badge(s)
-        t.append(f"  {e_b} ")
-        t.append(f"{h['name'][:13]:<13} ", style=P["text"])
+        t.append(f" {e_b} ")
+        t.append(f"{h['name'][:16]:<16} ", style=P["text"])
         t.append(f"🔥{s}\n", style=f"bold {P['orange']}" if s > 0 else "dim")
     # Comparativa semanal/mensual
     this_w = _period_rate(data, 0, 6)
@@ -299,16 +296,53 @@ def make_charts_panel(data):
     dm = this_m - prev_m
     am = "↑" if dm > 0 else "↓" if dm < 0 else "→"
     cm = P["green"] if dm >= 0 else P["red"]
-    t.append(f"\n  ◈ COMPARATIVA\n", style=f"bold {P['muted']}")
+    t.append(f"\n ◈ COMPARATIVA\n", style=f"bold {P['muted']}")
     t.append(f"  Semana  ", style=P["muted"])
     t.append(f"{this_w:.0f}%", style=P["text"])
     t.append(f"  {aw}", style=f"bold {cw}")
-    t.append(f"{abs(dw):.0f}%\n", style=cw)
+    t.append(f" {abs(dw):.0f}%\n", style=cw)
     t.append(f"  Mes     ", style=P["muted"])
     t.append(f"{this_m:.0f}%", style=P["text"])
     t.append(f"  {am}", style=f"bold {cm}")
-    t.append(f"{abs(dm):.0f}%\n", style=cm)
-    return Panel(t, title=f"[bold {P['yellow']}]📊  CHARTS[/bold {P['yellow']}]",
+    t.append(f" {abs(dm):.0f}%\n", style=cm)
+    return Panel(t, title=f"[bold {P['orange']}]🏆  Top Rachas[/bold {P['orange']}]",
+                 border_style=P["border"])
+
+
+def make_info_panel(data):
+    """Panel derecho del área charts: sueño, nota diaria y estado de ánimo."""
+    t = Text(justify="left")
+    # — SUEÑO —
+    sl = (data.get("sleep", {}).get(_today()) or
+          data.get("sleep", {}).get((date.today() - timedelta(days=1)).isoformat()))
+    t.append("\n ◈ SUEÑO\n", style=f"bold {P['muted']}")
+    if sl:
+        t.append(" ")
+        t.append_text(sleep_bar_text(sl, 10))
+        t.append("\n")
+    else:
+        t.append("  Sin registro · pulsa S\n", style="dim")
+    # — NOTA DIARIA —
+    t.append("\n ◈ NOTA DIARIA\n", style=f"bold {P['muted']}")
+    nota = data.get("journal", {}).get(_today(), "").strip()
+    if nota:
+        # Mostrar hasta 2 líneas de 22 caracteres
+        lineas = [nota[i:i+22] for i in range(0, min(len(nota), 44), 22)]
+        for l in lineas:
+            t.append(f"  {l}\n", style=P["text"])
+    else:
+        t.append("  Sin nota · pulsa J\n", style="dim")
+    # — ESTADO DE ÁNIMO —
+    t.append("\n ◈ ESTADO DE ÁNIMO\n", style=f"bold {P['muted']}")
+    mood_idx = data.get("mood", {}).get(_today())
+    if mood_idx is not None and 0 <= mood_idx < len(MOODS):
+        emoji, nombre, desc, color = MOODS[mood_idx]
+        t.append(f"  {emoji} ", style=color)
+        t.append(f"{nombre}\n", style=f"bold {color}")
+        t.append(f"  {desc[:26]}\n", style=f"dim {P['text']}")
+    else:
+        t.append("  Sin registro · pulsa N\n", style="dim")
+    return Panel(t, title=f"[bold {P['blue']}]💡  Info Diaria[/bold {P['blue']}]",
                  border_style=P["border"])
 
 
@@ -318,7 +352,7 @@ def make_keys_panel(screen="main"):
         [("A", "Añadir"), ("E", "Editar"), ("D", "Eliminar"), ("H", "Historial")],
         [("C", "Calendario"), ("S", "Sueño"), ("J", "Diario"), ("G", "Objetivos")],
         [("V", "Eventos"), ("M", "Heatmap"), ("O", "Reordenar"), ("X", "Exportar")],
-        [("Tab", "Colapsar cat."), ("*", "Destacar hábito"), ("Q", "Salir"), ("", "")],
+        [("Tab", "Colapsar cat."), ("*", "Destacar hábito"), ("N", "Estado ánimo"), ("Q", "Salir")],
     ],
         "calendar": [("←→", "Mes ant/sig"), ("Q", "Volver")],
         "sleep": [("←→", "Mes ant/sig"), ("L", "Registrar sueño"), ("Q", "Volver")],
@@ -362,20 +396,24 @@ def make_keys_panel(screen="main"):
                  border_style=P["border"])
 
 
-def make_mini_calendar(data, year=None, month=None):
-    today = date.today()
-    if year is None:
-        year = today.year
-    if month is None:
-        month = today.month
-    _, n_days = monthrange(year, month)
-    first_dow = date(year, month, 1).weekday()
-    events = data.get("events", [])
+def _cal_ev_days(data, year, month, n_days):
+    """Helper: devuelve dict {día: [eventos]} para el mes dado."""
     ev_days = {}
-    for ev in events:
+    for ev in data.get("events", []):
         for d in range(1, n_days + 1):
             if _event_matches(ev, year, month, d):
                 ev_days.setdefault(d, []).append(ev)
+    return ev_days
+
+
+def make_mini_calendar(data, year=None, month=None):
+    """Panel MES: cuadrícula del calendario mensual."""
+    today = date.today()
+    year = year or today.year
+    month = month or today.month
+    _, n_days = monthrange(year, month)
+    first_dow = date(year, month, 1).weekday()
+    ev_days = _cal_ev_days(data, year, month, n_days)
     t = Text("\n ", justify="center")
     for d in ["Lu", "Ma", "Mi", "Ju", "Vi", "Sa", "Do"]:
         t.append(f" {d}", style=f"bold {P['muted']}")
@@ -402,15 +440,29 @@ def make_mini_calendar(data, year=None, month=None):
             else:
                 t.append(f" {d.day:2d}", style=f"dim {P['muted']}")
         t.append("\n")
+    lbl = f"{_MESES[month-1]} {year}"
+    return Panel(t, title=f"[bold {P['blue']}]📅  {lbl}[/bold {P['blue']}]",
+                 border_style=P["border"], padding=(0, 1))
+
+
+def make_calendar_events(data, year=None, month=None):
+    """Panel EVENTOS: lista de eventos del mes actual."""
+    today = date.today()
+    year = year or today.year
+    month = month or today.month
+    _, n_days = monthrange(year, month)
+    ev_days = _cal_ev_days(data, year, month, n_days)
+    t = Text("\n", justify="left")
     if ev_days:
-        t.append("\n")
         for day_num in sorted(ev_days.keys()):
             for ev in ev_days[day_num]:
                 ic, _, col, _ = EVENT_TYPES.get(ev["type"], EVENT_TYPES["event"])
                 yr_tag = "↺ " if ev.get("yearly") else ""
-                t.append(f" {ic}{yr_tag}{day_num:02d} {ev['title'][:15]}\n", style=col)
-    lbl = f"{_MESES[month-1]} {year}"
-    return Panel(t, title=f"[bold {P['blue']}]📅  {lbl}[/bold {P['blue']}]",
+                t.append(f" {ic} {yr_tag}{day_num:02d}  ", style=f"bold {col}")
+                t.append(f"{ev['title'][:18]}\n", style=P["text"])
+    else:
+        t.append("  Sin eventos este mes\n\n  Pulsa V para añadir", style="dim")
+    return Panel(t, title=f"[bold {P['purple']}]📌  Eventos[/bold {P['purple']}]",
                  border_style=P["border"], padding=(0, 1))
 
 
@@ -421,16 +473,32 @@ def build_main_layout(data, cursor, scroll=0, row_budget=None):
     ev_count = sum(1 for ev in data.get("events", [])
                    if any(_event_matches(ev, today.year, today.month, d) for d in range(1, n_days + 1)))
     cal_size = 11 + min(ev_count, 5)
+    bottom_size = max(cal_size, 14)
+    # Calcula tamaño fijo de hábitos dejando 3 filas libres al fondo para prompts
+    _KEYS_SIZE = 7
+    _FREE_ROWS = 3
+    habit_size = max(9, console.size.height - 3 - 4 - bottom_size - _KEYS_SIZE - _FREE_ROWS)
     layout = Layout()
     layout.split_column(
         Layout(make_header(), name="header", size=3),
         Layout(make_today_strip(data), name="strip", size=4),
-        Layout(name="top", ratio=1),
-        Layout(make_keys_panel("main"), name="keys", size=9),
+        Layout(habits_panel, name="main", size=habit_size),
+        Layout(name="bottom", size=bottom_size),
+        Layout(make_keys_panel("main"), name="keys", size=_KEYS_SIZE),
     )
-    layout["top"].split_row(Layout(habits_panel, name="main", ratio=3), Layout(name="side", ratio=1))
-    layout["top"]["side"].split_column(
-        Layout(make_charts_panel(data), name="charts", ratio=2),
-        Layout(make_mini_calendar(data), name="minical", size=cal_size),
+    layout["bottom"].split_row(
+        Layout(name="charts", ratio=5),
+        Layout(name="minical", ratio=3),
+    )
+    # Charts: 3 columnas — Semana | Top Rachas | Info diaria
+    layout["bottom"]["charts"].split_row(
+        Layout(make_semana_panel(data), name="semana", ratio=1),
+        Layout(make_top_rachas_panel(data), name="top_rachas", ratio=1),
+        Layout(make_info_panel(data), name="info", ratio=1),
+    )
+    # Calendario: 2 columnas — Mes | Eventos
+    layout["bottom"]["minical"].split_row(
+        Layout(make_mini_calendar(data), name="cal_grid", ratio=1),
+        Layout(make_calendar_events(data), name="cal_events", ratio=1),
     )
     return layout, nav, last_vis

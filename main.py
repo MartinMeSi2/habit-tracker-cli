@@ -10,7 +10,7 @@ from render import build_main_layout
 from screens import (form_habit, action_check, action_delete, action_export,
                      screen_calendar, screen_sleep, screen_journal, screen_goals,
                      screen_events, screen_history, screen_heatmap, screen_reorder,
-                     _quick_counter)
+                     screen_mood_history, _quick_counter)
 
 
 def _centered_scroll(nav_len, cursor, content_budget):
@@ -44,7 +44,7 @@ def main():
 
         def _render():
             nonlocal last_vis
-            row_budget = max(5, console.size.height - 20)
+            row_budget = max(5, console.size.height - 35)  # header(3)+strip(4)+bottom(14)+keys(7)+free(3)+panel(4)
             layout, nav, lv = build_main_layout(data, cursor, scroll, row_budget)
             last_vis = lv
             live.update(layout)
@@ -65,7 +65,7 @@ def main():
         def _recenter(nav):
             """Recalcula scroll para centrar ``cursor`` si está fuera de vista."""
             nonlocal scroll
-            row_budget     = max(5, console.size.height - 20)
+            row_budget     = max(5, console.size.height - 35)  # igual que _render
             content_budget = max(2, row_budget - 2)
             if cursor < scroll or cursor > last_vis:
                 scroll = _centered_scroll(len(nav), cursor, content_budget)
@@ -102,6 +102,14 @@ def main():
 
             # ── Q: salir ─────────────────────────────────────────────
             if key in ("q", "Q"):
+                with _subscreen():
+                    console.print(f"\n  [bold {P['yellow']}]¿Guardar datos antes de salir?[/bold {P['yellow']}]  [dim](S / N)[/dim]")
+                    resp = readchar.readkey()
+                if resp in ("s", "S", "y", "Y"):
+                    save_data(data)
+                    with _subscreen():
+                        console.print(f"\n  [{P['green']}]✅  Datos guardados.[/{P['green']}]")
+                        import time; time.sleep(0.8)
                 break
 
             # ── TAB: colapsar / expandir categoría ───────────────────
@@ -157,7 +165,13 @@ def main():
                 if n and 0 <= cursor < n:
                     kind, cat, h = nav[cursor]
                     if kind == "HABIT":
-                        last_undo = action_check(data, h)
+                        if h.get("type", "boolean") == "boolean":
+                            # Toggle silencioso: no interrumpe el Live
+                            last_undo = action_check(data, h, silent=True)
+                        else:
+                            # counter/rating/note: necesita input, usa subscreen limpia
+                            with _subscreen():
+                                last_undo = action_check(data, h)
                 nav = _render()
 
             # ── + / - : contador rápido ──────────────────────────────
@@ -261,6 +275,12 @@ def main():
                 last_undo = None
                 with _subscreen():
                     screen_heatmap(data)
+                nav = _render()
+
+            elif key in ("n", "N"):
+                last_undo = None
+                with _subscreen():
+                    screen_mood_history(data)
                 nav = _render()
 
     console.print(f"\n  [bold {P['blue']}]👋  ¡Hasta mañana![/bold {P['blue']}]\n")

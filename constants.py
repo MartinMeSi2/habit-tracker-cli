@@ -28,6 +28,13 @@ SPARKS="▁▂▃▄▅▆▇█"
 EVENT_TYPES={"birthday":("🎂","Cumpleaños","#f06595",True),"event":("📌","Evento","#4d96ff",False),
              "party":("🎉","Fiesta","#ffd93d",False),"free":("🏖","Día libre","#6bcb77",False)}
 HEAT_COLORS=["#161b22","#0e4429","#006d32","#26a641","#39d353"]
+MOODS=[
+    ("💫", "Radiante",    "productivo, inspirado, alegre",       "#ffd93d"),
+    ("💚", "Tranquilo",   "agradecido, en paz, equilibrado",      "#6bcb77"),
+    ("🩵", "Melancólico", "cansado, reflexivo, solitario",        "#74c0fc"),
+    ("🔥", "Estresado",   "irritable, ansioso, frustrado",        "#ff6b6b"),
+    ("😶\u200d🌫️", "Apático", "en piloto automático, vacío",     "#8b949e"),
+]
 _DIAS=["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"]
 _MESES=["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"]
 DATA_FILE=Path("habits_data.json")

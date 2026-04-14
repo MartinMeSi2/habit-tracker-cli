@@ -14,11 +14,11 @@ from rich import box
 from rich.prompt import Prompt, Confirm
 from constants import (P, BADGES, SPARKS, SECTION_TYPES, SLEEP_COLORS, PERIODS,
                        PERIOD_UI, EVENT_TYPES, HEAT_COLORS, _DIAS, _MESES,
-                       HABIT_COLORS, DEFAULT_CATS, console)
+                       HABIT_COLORS, DEFAULT_CATS, MOODS, console)
 from data import (load_data, save_data, _today, _is_done, _find, get_streak, get_rate,
                   get_badge, habit_history, sparkline_vals, make_spark, sleep_color,
                   _build_ordered, _event_matches, _events_for_month, _heat_intensity)
-from render import (make_header, make_habits_panel, make_charts_panel, make_keys_panel,
+from render import (make_header, make_habits_panel, make_keys_panel,
                     make_mini_calendar, make_today_strip, build_main_layout,
                     sleep_bar_text, pct_bar, _err, _pause, _hr, _section)
 
@@ -429,7 +429,7 @@ def screen_sleep(data, year=None, month=None):
             warn = " ⚠" if hours < 6 else " ✓" if hours >= 7 else ""
             bars.append(f"  {hours:.1f}h{warn}\n", style=color)
         else:
-            bars.append("[dim]-[/dim]\n")
+            bars.append("-\n", style="dim")
     console.print(Panel(bars, title=f"[bold {P['teal']}]🌙  ÚLTIMAS 14 NOCHES[/bold {P['teal']}]",
                         border_style=P["border"]))
     all_m = [sleep.get(date(year, month, d).isoformat()) for d in range(1, n_days + 1)
@@ -442,15 +442,19 @@ def screen_sleep(data, year=None, month=None):
         good_pct = sum(1 for h in all_m if h >= 7) / len(all_m) * 100
         stats.append(f"\n  ◈ Promedio  ", style=P["muted"])
         stats.append_text(sleep_bar_text(avg, 8))
-        stats.append(f"\n  ◈ Mejor   [{P['green']}]{best:.1f}h[/{P['green']}]", style=P["muted"])
-        stats.append(f"   Peor   [{P['red']}]{worst:.1f}h[/{P['red']}]\n", style=P["muted"])
-        stats.append(f"  ◈ Noches ≥7h  [{P['blue']}]{good_pct:.0f}%[/{P['blue']}]"
-                     f"  [{P['muted']}]({len(all_m)} registradas)[/{P['muted']}]\n", style=P["muted"])
+        stats.append(f"\n  ◈ Mejor   ", style=P["muted"])
+        stats.append(f"{best:.1f}h", style=P["green"])
+        stats.append(f"   Peor   ", style=P["muted"])
+        stats.append(f"{worst:.1f}h\n", style=P["red"])
+        stats.append(f"  ◈ Noches ≥7h  ", style=P["muted"])
+        stats.append(f"{good_pct:.0f}%", style=P["blue"])
+        stats.append(f"  ({len(all_m)} registradas)\n", style=P["muted"])
     else:
-        stats.append("\n  [dim]Sin datos este mes.[/dim]\n")
+        stats.append("\n  Sin datos este mes.\n", style="dim")
     legend = Text("\n  Leyenda: ")
     for mn, color, label in reversed(SLEEP_COLORS):
-        legend.append(f"[{color}]■[/{color}] {label}  ")
+        legend.append("■", style=color)
+        legend.append(f" {label}  ")
     console.print(Panel(stats + legend, title=f"[bold {P['blue']}]📊  ESTADÍSTICAS[/bold {P['blue']}]",
                         border_style=P["border"]))
     console.print(make_keys_panel("sleep"))
@@ -505,9 +509,9 @@ def screen_goals(data):
             nt = sum(1 for g in data.get("goals", []) if g["type"] == p)
             badge = f" {nd}/{nt}" if nt else " 0"
             if p == period:
-                tabs.append(f"[bold {c}][ {l}{badge} ][/bold {c}]")
+                tabs.append(f"[ {l}{badge} ]", style=f"bold {c}")
             else:
-                tabs.append(f"[dim]  {l}{badge}  [/dim]")
+                tabs.append(f"  {l}{badge}  ", style="dim")
             tabs.append("  ")
         console.print(tabs)
         console.print()
@@ -640,14 +644,48 @@ def _edit_goal(data, goal):
 
 def _edit_goal_note(data, goal):
     console.print(f"\n  [{P['orange']}]📝  Nota — {goal['text'][:60]}[/{P['orange']}]")
-    existing = goal.get("notes", "") or ""
+    existing = (goal.get("notes", "") or "").strip()
     if existing:
-        console.print(f"  [dim]Nota actual: {existing}[/dim]\n")
-    note = Prompt.ask(f"  [{P['muted']}]Nueva nota (Enter vacío para borrar)[/{P['muted']}]",
-                      default=existing)
-    goal["notes"] = note.strip()
-    save_data(data)
-    console.print(f"  [{P['green']}]✅ Nota guardada.[/{P['green']}]")
+        console.print(Panel(Text(f"\n{existing}\n", style=P["text"]),
+                            title="[dim]◈  Nota actual[/dim]",
+                            border_style=P["border"], padding=(0, 2)))
+        t = Text("\n  ")
+        t.append("[A]", style=f"bold {P['blue']}")
+        t.append(" Añadir al final  ·  ", style=P["text"])
+        t.append("[R]", style=f"bold {P['yellow']}")
+        t.append(" Reemplazar  ·  ", style=P["text"])
+        t.append("[D]", style=f"bold {P['red']}")
+        t.append(" Borrar  ·  ", style=P["text"])
+        t.append("Esc  Cancelar", style="dim")
+        console.print(t)
+        key = readchar.readkey()
+        if key in ("a", "A"):
+            addition = Prompt.ask(f"\n  [{P['muted']}]Añadir al final[/{P['muted']}]")
+            if addition.strip():
+                goal["notes"] = existing + "\n" + addition.strip()
+                save_data(data)
+                console.print(f"  [{P['green']}]✅ Nota actualizada.[/{P['green']}]")
+            else:
+                console.print(f"  [dim]Sin cambios.[/dim]")
+        elif key in ("r", "R"):
+            note = Prompt.ask(f"\n  [{P['muted']}]Nueva nota[/{P['muted']}]", default=existing)
+            goal["notes"] = note.strip()
+            save_data(data)
+            console.print(f"  [{P['green']}]✅ Nota guardada.[/{P['green']}]")
+        elif key in ("d", "D"):
+            goal["notes"] = ""
+            save_data(data)
+            console.print(f"  [{P['yellow']}]Nota borrada.[/{P['yellow']}]")
+        else:
+            console.print(f"  [dim]Cancelado.[/dim]")
+    else:
+        note = Prompt.ask(f"  [{P['muted']}]Escribe la nota[/{P['muted']}]", default="")
+        if note.strip():
+            goal["notes"] = note.strip()
+            save_data(data)
+            console.print(f"  [{P['green']}]✅ Nota guardada.[/{P['green']}]")
+        else:
+            console.print(f"  [dim]Sin cambios.[/dim]")
     _pause()
 
 
@@ -759,7 +797,7 @@ def _render_events_monthly(data, year, month):
     day_evs = _events_for_month(data, year, month)
     t = Text()
     if not day_evs:
-        t.append("\n  [dim]Sin eventos este mes.[/dim]\n")
+        t.append("\n  Sin eventos este mes.\n", style="dim")
     else:
         for d, evs in day_evs:
             dow = _DIAS[date(year, month, d).weekday()][:3].upper()
@@ -1005,11 +1043,11 @@ def screen_reorder(data):
         tabs = Text("\n  ")
         for m, mlbl in [("habits", "Hábitos"), ("categories", "Categorías")]:
             if m == mode:
-                tabs.append(f"[bold {P['teal']}][ {mlbl} ][/bold {P['teal']}]")
+                tabs.append(f"[ {mlbl} ]", style=f"bold {P['teal']}")
             else:
-                tabs.append(f"[dim]  {mlbl}  [/dim]")
+                tabs.append(f"  {mlbl}  ", style="dim")
             tabs.append("  ")
-        tabs.append(f"[dim]  Tab: cambiar modo[/dim]")
+        tabs.append("  Tab: cambiar modo", style="dim")
         console.print(tabs)
         console.print()
         if mode == "categories":
@@ -1246,7 +1284,7 @@ def form_habit(data, existing=None):
 
 # ──────────────────────────────────── Acciones: check / borrar / exportar ──
 
-def action_check(data, habit):
+def action_check(data, habit, silent=False):
     ds = _today()
     hid = str(habit["id"])
     htype = habit.get("type", "boolean")
@@ -1255,14 +1293,12 @@ def action_check(data, habit):
         data["logs"][ds] = {}
     val = data["logs"][ds].get(hid)
     done = _is_done(val, habit)
-    console.print(f"\n  [{P['teal']}]◈  {habit['name']}[/{P['teal']}]")
-    console.print(_hr())
+    if not silent:
+        console.print(f"\n  [{P['teal']}]◈  {habit['name']}[/{P['teal']}]")
+        console.print(_hr())
     if htype == "boolean":
         prev_val = data["logs"][ds].get(hid)
         data["logs"][ds][hid] = not done
-        st = (f"[{P['green']}]✅ Hecho[/{P['green']}]" if not done
-              else f"[{P['red']}]⬜ Deshecho[/{P['red']}]")
-        console.print(f"  {st}")
         save_data(data)
         return {"ds": ds, "hid": hid, "prev": prev_val}
     elif htype == "counter":
@@ -1291,6 +1327,163 @@ def action_check(data, habit):
             console.print(f"  [{P['green']}]📝 Nota guardada.[/{P['green']}]")
         _pause()
     save_data(data)
+
+
+def screen_mood_history(data):
+    """Pantalla de historial de estado de ánimo — estilo heatmap + selector."""
+    WEEKS = 20
+    DOW_LABELS = ["Lu", "Ma", "Mi", "Ju", "Vi", "Sá", "Do"]
+
+    def _render_mood_screen():
+        console.clear()
+        console.print(make_header())
+        _section("💭  ESTADO DE ÁNIMO", P["purple"])
+
+        today = date.today()
+        # Inicio: lunes de hace WEEKS semanas
+        start = today - timedelta(days=today.weekday()) - timedelta(weeks=WEEKS - 1)
+        end_sun = today + timedelta(days=6 - today.weekday())
+        mood_data = data.get("mood", {})
+
+        # ── Cabecera de meses ───────────────────────────────────────
+        month_row = Text("     ")
+        cur_col = start
+        while cur_col <= end_sun:
+            if cur_col.day <= 7:
+                lbl = _MESES[cur_col.month - 1][:3].upper()
+                month_row.append(f"{lbl:<5}", style=f"bold {P['blue']}")
+            else:
+                month_row.append("     ")
+            cur_col += timedelta(weeks=1)
+
+        # ── Grid de heatmap ─────────────────────────────────────────
+        grid = Text()
+        grid.append_text(month_row)
+        grid.append("\n")
+        for row in range(7):
+            grid.append(f" {DOW_LABELS[row]} ", style=f"dim {P['muted']}")
+            cur = start + timedelta(days=row)
+            while cur <= end_sun:
+                if cur <= today:
+                    ds = cur.isoformat()
+                    idx = mood_data.get(ds)
+                    if idx is not None and 0 <= idx < len(MOODS):
+                        _, _, _, color = MOODS[idx]
+                        grid.append("██", style=f"bold {color}")
+                    else:
+                        grid.append("░░", style=f"dim {P['border']}")
+                else:
+                    grid.append("  ")
+                cur += timedelta(weeks=1)
+                grid.append(" ")
+            grid.append("\n")
+
+        console.print(Panel(grid,
+                            title=f"[bold {P['purple']}]📅  Últimas {WEEKS} semanas[/bold {P['purple']}]",
+                            border_style=P["border"], padding=(0, 1)))
+
+        # ── Leyenda de moods ────────────────────────────────────────
+        legend = Text("\n  ")
+        for i, (emoji, nombre, _, color) in enumerate(MOODS):
+            legend.append(f"  [{i+1}] ", style=f"dim {P['muted']}")
+            legend.append("██ ", style=f"bold {color}")
+            legend.append(f"{emoji} {nombre}  ", style=color)
+        console.print(legend)
+
+        # ── Estado de hoy y stats ───────────────────────────────────
+        console.print()
+        today_idx = mood_data.get(today.isoformat())
+        if today_idx is not None:
+            em, nm, desc, cl = MOODS[today_idx]
+            console.print(f"  Hoy: ", end="")
+            console.print(f"{em}  {nm}", style=f"bold {cl}", end="")
+            console.print(f"  —  {desc}", style=f"dim {P['text']}")
+        else:
+            console.print(f"  [dim {P['muted']}]Hoy sin registrar · pulsa 1-5 o ↵ para añadir[/dim {P['muted']}]")
+
+        # ── Stats rápidas ───────────────────────────────────────────
+        all_moods = [v for v in mood_data.values() if isinstance(v, int) and 0 <= v < len(MOODS)]
+        if all_moods:
+            from collections import Counter
+            most = Counter(all_moods).most_common(1)[0][0]
+            em_m, nm_m, _, cl_m = MOODS[most]
+            console.print(f"  [dim {P['muted']}]Más frecuente: [/dim {P['muted']}]", end="")
+            console.print(f"{em_m} {nm_m}", style=f"bold {cl_m}", end="")
+            console.print(f"  [dim {P['muted']}]({len(all_moods)} días registrados)[/dim {P['muted']}]")
+
+        console.print(f"\n  [dim]↵ / 1-5 Añadir de hoy  ·  Q Volver[/dim]")
+
+    while True:
+        _render_mood_screen()
+        key = readchar.readkey()
+        if key in ("q", "Q", "\x1b"):
+            break
+        elif key in "12345":
+            idx = int(key) - 1
+            data.setdefault("mood", {})[_today()] = idx
+            save_data(data)
+            em, nm, _, cl = MOODS[idx]
+            console.print(f"\n  [{cl}]{em}  {nm} — guardado.[/{cl}]")
+            import time; time.sleep(0.6)
+        elif key in ("\r", "\n", readchar.key.ENTER):
+            # Abrir selector interactivo
+            screen_mood(data)
+
+
+def screen_mood(data):
+    """Pantalla de selección de estado de ánimo."""
+    selected = 0
+    # Pre-seleccionar el estado de hoy si ya existe
+    today_mood = data.get("mood", {}).get(_today())
+    if today_mood is not None:
+        selected = today_mood
+    while True:
+        console.clear()
+        console.print(make_header())
+        _section("💭  ESTADO DE ÁNIMO", P["purple"])
+        console.print()
+        for i, (emoji, nombre, desc, color) in enumerate(MOODS):
+            is_sel = (i == selected)
+            cur = f"[bold {color}] ▶ [/bold {color}]" if is_sel else "   "
+            bg = f" on {P['sel']}" if is_sel else ""
+            line = Text()
+            line.append(cur)
+            line.append(f" {emoji}  ", style=color + bg)
+            line.append(f"{nombre:<14}", style=f"bold {color}{bg}")
+            line.append(f"  {desc}", style=f"dim {P['text']}{bg}")
+            console.print(line)
+            console.print()
+        # Mostrar el registrado hoy si existe
+        if today_mood is not None:
+            em, nm, _, cl = MOODS[today_mood]
+            console.print(f"  [dim]Hoy: [{cl}]{em} {nm}[/{cl}][/dim]\n")
+        console.print(f"  [dim {P['muted']}]↑↓ Navegar  ·  ↵ Guardar  ·  Q Volver sin guardar[/dim {P['muted']}]")
+        key = readchar.readkey()
+        if key in ("q", "Q", "\x1b"):
+            break
+        elif key == readchar.key.UP:
+            selected = (selected - 1) % len(MOODS)
+        elif key == readchar.key.DOWN:
+            selected = (selected + 1) % len(MOODS)
+        elif key in ("\r", "\n", readchar.key.ENTER):
+            data.setdefault("mood", {})[_today()] = selected
+            save_data(data)
+            today_mood = selected
+            em, nm, _, cl = MOODS[selected]
+            console.print(f"\n  [{cl}]{em}  {nm} — guardado.[/{cl}]")
+            import time; time.sleep(0.7)
+            break
+        # Teclas numéricas 1-5 para selección rápida
+        elif key in "12345":
+            idx = int(key) - 1
+            selected = idx
+            data.setdefault("mood", {})[_today()] = selected
+            save_data(data)
+            today_mood = selected
+            em, nm, _, cl = MOODS[selected]
+            console.print(f"\n  [{cl}]{em}  {nm} — guardado.[/{cl}]")
+            import time; time.sleep(0.7)
+            break
 
 
 def action_delete(data, habit):
