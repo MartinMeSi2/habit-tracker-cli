@@ -1,41 +1,41 @@
 # 🎯 Habit Tracker CLI
 
-A fully-featured terminal habit tracker built with Python and [Rich](https://github.com/Textualize/rich). Track daily habits, monitor your sleep, write journal entries, set goals, and visualize your consistency — all from your terminal.
+Un rastreador de hábitos de terminal completo construido con Python y [Rich](https://github.com/Textualize/rich). Registra tus hábitos diarios, monitoriza tu sueño, escribe entradas de diario, establece objetivos y visualiza tu constancia — todo desde la terminal.
 
-![Preview](assets/Captura%20de%20pantalla%202026-04-14%20135202.png)
-
----
-
-## ✨ Features
-
-- **📋 Habit Dashboard** — Full overview of all your habits grouped by category, with streaks, completion rates and sparklines
-- **✅ Multiple habit types** — Boolean (done/not done), Counter (e.g. glasses of water), Rating (1–5 mood), and free-text Notes
-- **🗂 Category system** — Group habits by custom categories (Health, Work, Personal, Learning…), collapsible with `Tab`
-- **⭐ Star important habits** — Mark priority habits with a star so they stand out visually
-- **📅 Monthly calendar** — View your habit completions day by day for any month
-- **💤 Sleep tracker** — Log your sleep hours with a visual bar and color-coded quality indicator
-- **📓 Journal** — Write a free-text daily note per day, searchable by date
-- **🎯 Goals** — Create weekly, monthly or annual goals and track their progress
-- **📌 Events** — Add birthdays, parties, free days and recurring yearly events
-- **🌡 GitHub-style Heatmap** — Annual activity heatmap per habit, colored by intensity
-- **📜 History** — 30-day day-by-day history view for any individual habit
-- **🔁 Reorder** — Drag habits and categories into any order you want
-- **📤 Export** — Export your data to a readable text report
-- **↩ Undo** — Instantly undo the last habit check with `U`
-- **🔄 Wrap-around navigation** — Seamless circular scrolling through habits with centered focus
-- **📏 Fixed 180×55 layout** — Consistent fixed-width display, auto-resizes your terminal on launch
+![Vista previa](assets/Captura%20de%20pantalla%202026-04-14%20135202.png)
 
 ---
 
-## 🗂 Project Structure
+## ✨ Funcionalidades
+
+- **📋 Panel de hábitos** — Vista completa de todos tus hábitos agrupados por categoría, con rachas, tasas de completado y minigráficos
+- **✅ Múltiples tipos de hábito** — Booleano (hecho/no hecho), Contador (p.ej. vasos de agua), Valoración (estado de ánimo 1–5) y Notas de texto libre
+- **🗂 Sistema de categorías** — Agrupa hábitos en categorías personalizadas (Salud, Trabajo, Personal, Aprendizaje…), colapsables con `Tab`
+- **⭐ Hábitos destacados** — Marca los hábitos más importantes con una estrella para que destaquen visualmente
+- **📅 Calendario mensual** — Visualiza tus completados día a día para cualquier mes
+- **💤 Registro de sueño** — Anota tus horas de sueño con barra visual e indicador de calidad por colores
+- **📓 Diario personal** — Escribe una nota libre por día, navegable por fecha
+- **🎯 Objetivos** — Crea metas semanales, mensuales o anuales y haz seguimiento de su progreso
+- **📌 Eventos** — Añade cumpleaños, fiestas, días libres y eventos recurrentes anuales
+- **🌡 Heatmap estilo GitHub** — Mapa de calor anual por hábito, coloreado según la intensidad
+- **📜 Historial** — Vista de los últimos 30 días para cualquier hábito individual
+- **🔁 Reordenar** — Mueve hábitos y categorías al orden que quieras
+- **📤 Exportar** — Exporta tus datos a un informe de texto legible
+- **↩ Deshacer** — Deshaz el último registro de un hábito al instante con `U`
+- **🔄 Navegación circular** — Desplazamiento circular entre hábitos con enfoque centrado
+- **📏 Diseño fijo 180×55** — Visualización consistente de ancho fijo, redimensiona el terminal automáticamente al arrancar
+
+---
+
+## 🗂 Estructura del proyecto
 
 ```
 habit-tracker-cli/
-├── main.py          ← Entry point and main input loop
-├── constants.py     ← Colors, layout constants, global console
-├── data.py          ← Data loading, saving and all calculations
-├── render.py        ← All Rich widgets, panels and layouts
-├── screens.py       ← Interactive sub-screens and actions
+├── main.py          ← Punto de entrada y bucle principal de entrada
+├── constants.py     ← Colores, constantes de layout y consola global
+├── data.py          ← Carga/guardado de datos y todos los cálculos
+├── render.py        ← Todos los widgets Rich, paneles y layouts
+├── screens.py       ← Sub-pantallas interactivas y acciones
 ├── assets/
 │   └── screenshot.png
 ├── requirements.txt
@@ -44,131 +44,131 @@ habit-tracker-cli/
 
 ---
 
-## ⚙️ Requirements
+## ⚙️ Requisitos
 
 - Python 3.8+
-- A terminal with true color support (Windows Terminal, iTerm2, GNOME Terminal, etc.)
+- Terminal con soporte de color verdadero (Windows Terminal, iTerm2, GNOME Terminal, etc.)
 
 ---
 
-## 🚀 Installation
+## 🚀 Instalación
 
 ```bash
-# Clone the repository
+# Clonar el repositorio
 git clone https://github.com/MartinMeSi2/habit-tracker-cli.git
 cd habit-tracker-cli
 
-# Install dependencies
+# Instalar dependencias
 pip install -r requirements.txt
 
-# Run
+# Ejecutar
 python main.py
 ```
 
-> **Note:** On first run, a `habits_data.json` file will be created automatically with sample habits. This file is excluded from the repository via `.gitignore`.
+> **Nota:** En la primera ejecución se creará automáticamente un archivo `habits_data.json` con hábitos de ejemplo. Este archivo está excluido del repositorio mediante `.gitignore`.
 
 ---
 
-## ⌨️ Keyboard Reference
+## ⌨️ Referencia de teclas
 
-### Navigation
+### Navegación
 
-| Key | Action |
-|-----|--------|
-| `↑` / `↓` | Navigate habits and categories (wraps around) |
-| `Tab` | Collapse / expand the selected category |
-| `Enter` | Check / complete the selected habit |
-| `U` | Undo last habit check |
-| `Q` | Quit |
+| Tecla | Acción |
+|-------|--------|
+| `↑` / `↓` | Navegar entre hábitos y categorías (circular) |
+| `Tab` | Colapsar / expandir la categoría seleccionada |
+| `Enter` | Marcar / completar el hábito seleccionado |
+| `U` | Deshacer el último registro |
+| `Q` | Salir |
 
-### Habit Actions
+### Acciones sobre hábitos
 
-| Key | Action |
-|-----|--------|
-| `A` | Add a new habit |
-| `E` | Edit the selected habit |
-| `D` | Delete the selected habit |
-| `*` | Toggle star (highlight) on selected habit |
-| `+` / `=` | Increment counter habit by 1 |
-| `-` | Decrement counter habit by 1 |
-| `H` | View 30-day history of selected habit |
+| Tecla | Acción |
+|-------|--------|
+| `A` | Añadir un nuevo hábito |
+| `E` | Editar el hábito seleccionado |
+| `D` | Eliminar el hábito seleccionado |
+| `*` | Marcar/desmarcar como destacado (estrella) |
+| `+` / `=` | Incrementar contador en 1 |
+| `-` | Decrementar contador en 1 |
+| `H` | Ver historial de 30 días del hábito seleccionado |
 
-### Screens
+### Pantallas
 
-| Key | Screen |
-|-----|--------|
-| `C` | 📅 Monthly calendar |
-| `S` | 💤 Sleep tracker |
-| `J` | 📓 Journal / diary |
-| `G` | 🎯 Goals |
-| `V` | 📌 Events |
-| `M` | 🌡 Annual heatmap (GitHub-style) |
-| `O` | 🔁 Reorder habits and categories |
-| `X` | 📤 Export data to text |
+| Tecla | Pantalla |
+|-------|---------|
+| `C` | 📅 Calendario mensual |
+| `S` | 💤 Registro de sueño |
+| `J` | 📓 Diario personal |
+| `G` | 🎯 Objetivos |
+| `V` | 📌 Eventos |
+| `M` | 🌡 Heatmap anual estilo GitHub |
+| `O` | 🔁 Reordenar hábitos y categorías |
+| `X` | 📤 Exportar datos a texto |
 
 ---
 
-## 📦 Habit Types
+## 📦 Tipos de hábito
 
-| Type | Description | Example |
+| Tipo | Descripción | Ejemplo |
 |------|-------------|---------|
-| `boolean` | Done or not done | Make the bed ✅ |
-| `counter` | Numeric counter with optional goal | Glasses of water (goal: 8) 🔢 |
-| `rating` | Score from 1 to 5 | Mood rating ⭐ |
-| `note` | Free-text daily note | Reflection of the day 📝 |
+| `boolean` | Completado o no | Hacer la cama ✅ |
+| `counter` | Contador numérico con meta opcional | Vasos de agua (meta: 8) 🔢 |
+| `rating` | Puntuación del 1 al 5 | Estado de ánimo ⭐ |
+| `note` | Nota de texto libre diaria | Reflexión del día 📝 |
 
 ---
 
-## 🏅 Streak Badges
+## 🏅 Insignias de racha
 
-Keep your streaks alive to earn badges!
+¡Mantén tu racha para conseguir insignias!
 
-| Badge | Name | Streak Required |
-|-------|------|----------------|
-| 💎 | DIAMOND | 100+ days |
-| 🏆 | PLATINUM | 50+ days |
-| ⭐ | SILVER | 20+ days |
-| 🥉 | BRONZE | 10+ days |
-| 🌿 | BEGINNER | 1+ days |
-| 🌱 | STARTER | 0 days |
-
----
-
-## 💾 Data Storage
-
-All data is stored locally in `habits_data.json` in the project directory. This file is excluded from version control. The structure includes:
-
-- **habits** — list of habit definitions
-- **logs** — daily log entries keyed by date → habit ID
-- **sleep** — sleep hours per date
-- **journal** — text notes per date
-- **goals** — list of goal objects with progress
-- **events** — list of calendar events (birthdays, parties, etc.)
-- **categories** — ordered list of category names
-- **collapsed_cats** — list of categories currently collapsed in the UI
+| Insignia | Nombre | Racha necesaria |
+|----------|--------|----------------|
+| 💎 | DIAMOND | 100+ días |
+| 🏆 | PLATINUM | 50+ días |
+| ⭐ | SILVER | 20+ días |
+| 🥉 | BRONZE | 10+ días |
+| 🌿 | BEGINNER | 1+ días |
+| 🌱 | STARTER | 0 días |
 
 ---
 
-## 🛠 Tech Stack
+## 💾 Almacenamiento de datos
 
-| Library | Purpose |
-|---------|---------|
-| [Rich](https://github.com/Textualize/rich) | TUI rendering, panels, tables, live display |
-| [readchar](https://github.com/magmax/python-readchar) | Raw keyboard input capture |
-| Python stdlib | `json`, `datetime`, `pathlib`, `calendar` |
+Todos los datos se guardan localmente en `habits_data.json` en el directorio del proyecto. Este archivo está excluido del control de versiones. La estructura incluye:
 
----
-
-## 📸 Screenshots
-
-![Habit Tracker Main Screen](assets/Captura%20de%20pantalla%202026-04-14%20135202.png)
-
----
-
-## 📄 License
-
-MIT — feel free to use, fork and adapt.
+- **habits** — lista de definiciones de hábitos
+- **logs** — registros diarios indexados por fecha → ID de hábito
+- **sleep** — horas de sueño por fecha
+- **journal** — notas de texto por fecha
+- **goals** — lista de objetivos con su progreso
+- **events** — lista de eventos del calendario (cumpleaños, fiestas, etc.)
+- **categories** — lista ordenada de nombres de categoría
+- **collapsed_cats** — categorías actualmente colapsadas en la interfaz
 
 ---
 
-*Built with ❤️ and Python by [MartinMeSi2](https://github.com/MartinMeSi2)*
+## 🛠 Tecnologías utilizadas
+
+| Librería | Uso |
+|----------|-----|
+| [Rich](https://github.com/Textualize/rich) | Renderizado TUI, paneles, tablas y pantalla en vivo |
+| [readchar](https://github.com/magmax/python-readchar) | Captura de teclado en crudo |
+| Stdlib de Python | `json`, `datetime`, `pathlib`, `calendar` |
+
+---
+
+## 📸 Capturas de pantalla
+
+![Pantalla principal del Habit Tracker](assets/Captura%20de%20pantalla%202026-04-14%20135202.png)
+
+---
+
+## 📄 Licencia
+
+MIT — siéntete libre de usar, hacer fork y adaptar.
+
+---
+
+*Construido con ❤️ y Python por [MartinMeSi2](https://github.com/MartinMeSi2)*
