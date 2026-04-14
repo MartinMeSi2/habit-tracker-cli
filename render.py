@@ -110,10 +110,54 @@ def make_today_strip(data):
     return Panel(Align.center(t), border_style=P["border"], padding=(0, 0))
 
 
-def make_habits_panel(data, selected_idx, scroll=0, visible_count=None):
+def make_habits_panel(data, selected_idx, scroll=0, row_budget=None):
+    """Renderiza el panel de hábitos con scroll virtual.
+
+    ``row_budget`` es el nº total de filas disponibles para el contenido
+    de la tabla (hábitos + cabeceras de categoría + indicadores de scroll).
+    Cada fila —sea hábito o cabecera de categoría— consume 1 unidad del
+    presupuesto, por lo que el resultado nunca desbordará el espacio del panel.
+    """
     from data import _today
     ds = _today()
     ordered = _build_ordered(data)
+
+    # ── Presupuesto de filas ────────────────────────────────────────
+    total_habits = sum(1 for k, _, _ in ordered if k == "HABIT")
+    if row_budget is None:
+        row_budget = total_habits + 50          # sin límite efectivo
+    scroll = max(0, scroll)
+
+    # Reservamos 1 fila para el indicador ↓ (puede que no se use,
+    # pero así garantizamos que nunca sobrepasamos el presupuesto).
+    content_budget = max(2, row_budget - 1)
+    if scroll > 0:
+        content_budget -= 1                     # 1 fila para el indicador ↑
+
+    # Pre-pase: qué hábitos e índices entran en la ventana visible
+    # Cada nueva categoría cuesta 1 fila (cabecera); cada hábito cuesta 1.
+    visible_idxs: list[int] = []
+    seen_cats_pass: dict = {}
+    hi = 0
+    rows_used = 0
+    for kind, cat, h in ordered:
+        if kind != "HABIT":
+            continue
+        if hi < scroll:
+            hi += 1
+            continue
+        cat_cost = 1 if cat not in seen_cats_pass else 0
+        if rows_used + cat_cost + 1 > content_budget:
+            break
+        seen_cats_pass[cat] = True
+        rows_used += cat_cost + 1
+        visible_idxs.append(hi)
+        hi += 1
+
+    visible_set = set(visible_idxs)
+    last_visible_idx = visible_idxs[-1] if visible_idxs else scroll - 1
+
+    # ── Construcción de la tabla ────────────────────────────────────
     table = Table(box=box.SIMPLE_HEAD, show_header=True, header_style=f"bold {P['blue']}",
                   border_style=P["border"], expand=True)
     table.add_column("", width=2)
@@ -132,37 +176,22 @@ def make_habits_panel(data, selected_idx, scroll=0, visible_count=None):
         "note": f"[{P['purple']}]note[/{P['purple']}]",
     }
 
-    # ── Scroll virtual ──────────────────────────────────────────────
-    total_habits = sum(1 for k, _, _ in ordered if k == "HABIT")
-    if visible_count is None:
-        visible_count = total_habits
-    scroll = max(0, min(scroll, max(0, total_habits - visible_count)))
-    end = scroll + visible_count
-
-    # Pre-pase: qué categorías tienen al menos un hábito en la ventana visible
-    cat_visible: dict = {}
-    hi = 0
-    for kind, cat, h in ordered:
-        if kind == "HABIT":
-            if scroll <= hi < end:
-                cat_visible[cat] = True
-            hi += 1
-
-    # Indicador de scroll hacia arriba
+    # Indicador scroll ↑
     if scroll > 0:
-        table.add_row(
-            "", f"[dim]  ↑  {scroll} hábito(s) más arriba[/dim]",
-            "", "", "", "", "", "", "")
+        table.add_row("", f"[dim]  ↑  {scroll} hábito(s) más arriba[/dim]",
+                      "", "", "", "", "", "", "")
 
     habit_list, habit_idx = [], 0
     for kind, cat, h in ordered:
         if kind == "CAT":
-            if cat_visible.get(cat, False):
+            if cat in seen_cats_pass:
                 n_cat = sum(1 for k, c, _ in ordered if k == "HABIT" and c == cat)
-                lbl = f"[bold {P['teal']}]╸ {cat.upper()}[/bold {P['teal']}] [dim]({n_cat})[/dim]"
-                table.add_row("", lbl, "", "", "", "", "", "", "", style=f"on {P['surf']}")
+                lbl = (f"[bold {P['teal']}]╸ {cat.upper()}[/bold {P['teal']}]"
+                       f" [dim]({n_cat})[/dim]")
+                table.add_row("", lbl, "", "", "", "", "", "", "",
+                              style=f"on {P['surf']}")
         else:
-            if scroll <= habit_idx < end:
+            if habit_idx in visible_set:
                 is_sel = (habit_idx == selected_idx)
                 val = data["logs"].get(ds, {}).get(str(h["id"]))
                 done = _is_done(val, h)
@@ -184,28 +213,33 @@ def make_habits_panel(data, selected_idx, scroll=0, visible_count=None):
                     tv = str(val or "—")
                 cursor = f"[bold {P['blue']}]▶[/bold {P['blue']}]" if is_sel else " "
                 rs = f"on {P['sel']}" if is_sel else ""
-                sc_t = Text(str(streak), style=f"bold {P['orange']}" if streak >= 10 else f"{P['yellow']}" if streak > 0 else "dim")
+                sc_t = Text(str(streak),
+                            style=f"bold {P['orange']}" if streak >= 10
+                            else f"{P['yellow']}" if streak > 0 else "dim")
                 table.add_row(
-                    cursor, h["name"], f"[dim]{h.get('category','')[:8]}[/dim]",
+                    cursor, h["name"], f"[dim]{h.get('category', '')[:8]}[/dim]",
                     type_lbl.get(htype, htype), tv, sc_t,
                     Text(f"{e_b} {n_b}", style=f"bold {c_b}"),
                     Text(sparks, style=P["teal"] if done else P["muted"]),
                     pct_bar(rate, 8), style=rs)
-            # habit_list recoge TODOS los hábitos para mantener índices correctos
+            # habit_list recoge TODOS para mantener los índices correctos en main.py
             habit_list.append(h)
             habit_idx += 1
 
-    # Indicador de scroll hacia abajo
-    remaining = total_habits - end
+    # Indicador scroll ↓
+    remaining = total_habits - (last_visible_idx + 1)
     if remaining > 0:
-        table.add_row(
-            "", f"[dim]  ↓  {remaining} hábito(s) más abajo[/dim]",
-            "", "", "", "", "", "", "")
+        table.add_row("", f"[dim]  ↓  {remaining} hábito(s) más abajo[/dim]",
+                      "", "", "", "", "", "", "")
 
     if not data["habits"]:
-        table.add_row("", "[dim]Sin hábitos · A para añadir[/dim]", "", "", "", "", "", "", "")
-    return Panel(table, title=f"[bold {P['blue']}]📋  HÁBITOS DIARIOS[/bold {P['blue']}]",
-                 border_style=P["border"], padding=(0, 1)), habit_list
+        table.add_row("", "[dim]Sin hábitos · A para añadir[/dim]",
+                      "", "", "", "", "", "", "")
+
+    return (Panel(table, title=f"[bold {P['blue']}]📋  HÁBITOS DIARIOS[/bold {P['blue']}]",
+                  border_style=P["border"], padding=(0, 1)),
+            habit_list,
+            last_visible_idx)
 
 
 def make_charts_panel(data):
@@ -376,8 +410,8 @@ def make_mini_calendar(data, year=None, month=None):
                  border_style=P["border"], padding=(0, 1))
 
 
-def build_main_layout(data, selected, scroll=0, visible_count=None):
-    habits_panel, habit_list = make_habits_panel(data, selected, scroll, visible_count)
+def build_main_layout(data, selected, scroll=0, row_budget=None):
+    habits_panel, habit_list, last_vis = make_habits_panel(data, selected, scroll, row_budget)
     today = date.today()
     _, n_days = monthrange(today.year, today.month)
     ev_count = sum(1 for ev in data.get("events", [])
@@ -395,4 +429,4 @@ def build_main_layout(data, selected, scroll=0, visible_count=None):
         Layout(make_charts_panel(data), name="charts", ratio=2),
         Layout(make_mini_calendar(data), name="minical", size=cal_size),
     )
-    return layout, habit_list
+    return layout, habit_list, last_vis

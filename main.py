@@ -4,7 +4,7 @@ import sys
 import readchar
 from rich.live import Live
 from constants import P, console
-from data import load_data, save_data, _today
+from data import load_data, save_data, _today, _build_ordered
 from render import build_main_layout
 from screens import (form_habit, action_check, action_delete, action_export,
                      screen_calendar, screen_sleep, screen_journal, screen_goals,
@@ -12,15 +12,48 @@ from screens import (form_habit, action_check, action_delete, action_export,
                      _quick_counter)
 
 
+def _scroll_for_last(data, target_idx, content_budget):
+    """Devuelve el mínimo `scroll` para que `target_idx` sea el último hábito visible.
+
+    Recorre la lista de hábitos hacia atrás desde `target_idx`, contando el
+    coste de cada fila (1 por hábito + 1 extra la primera vez que aparece una
+    categoría) hasta agotar el presupuesto de contenido.  El índice donde se
+    detiene es el primer hábito visible → ese es el nuevo scroll.
+    """
+    ordered = _build_ordered(data)
+    habits = [(cat, h) for kind, cat, h in ordered if kind == "HABIT"]
+    rows = 0
+    seen_cats: set = set()
+    first = target_idx
+    for i in range(target_idx, -1, -1):
+        if i >= len(habits):
+            continue
+        cat = habits[i][0]
+        cat_cost = 1 if cat not in seen_cats else 0
+        if rows + cat_cost + 1 > content_budget:
+            break
+        seen_cats.add(cat)
+        rows += cat_cost + 1
+        first = i
+    return first
+
+
 def main():
     data = load_data()
     selected = 0
     scroll = 0
+    last_vis = 0        # último índice de hábito visible (actualizado en _render)
     last_undo = None
+
     with Live(screen=True, auto_refresh=False, console=console) as live:
+
         def _render():
-            visible_count = max(5, console.size.height - 22)
-            layout, hl = build_main_layout(data, selected, scroll, visible_count)
+            nonlocal last_vis
+            # Filas disponibles para el contenido del panel de hábitos:
+            # total - header(3) - strip(4) - keys(9) - bordes panel(2) - cabecera tabla(2)
+            row_budget = max(5, console.size.height - 20)
+            layout, hl, lv = build_main_layout(data, selected, scroll, row_budget)
+            last_vis = lv
             live.update(layout)
             live.refresh()
             return hl
@@ -30,7 +63,7 @@ def main():
         while True:
             n = len(habit_list)
 
-            # ── Bug 1: Clamp — selected siempre dentro del rango válido ──
+            # ── Clamp: selected siempre dentro del rango válido ──────
             new_sel = max(0, min(selected, n - 1)) if n > 0 else 0
             if new_sel != selected:
                 selected = new_sel
@@ -39,11 +72,10 @@ def main():
 
             key = readchar.readkey()
 
-            # ── Navegación ↑↓ con scroll automático ──
+            # ── Navegación ↑↓ con scroll automático ─────────────────
             if key == readchar.key.UP:
                 if n:
                     selected = max(0, selected - 1)
-                    vc = max(5, console.size.height - 22)
                     if selected < scroll:
                         scroll = selected
                 habit_list = _render()
@@ -52,9 +84,13 @@ def main():
             if key == readchar.key.DOWN:
                 if n:
                     selected = min(n - 1, selected + 1)
-                    vc = max(5, console.size.height - 22)
-                    if selected >= scroll + vc:
-                        scroll = selected - vc + 1
+                    if selected > last_vis:
+                        # Calcular el scroll mínimo para que selected quede visible
+                        row_budget = max(5, console.size.height - 20)
+                        # content_budget: igual que en make_habits_panel
+                        # (se resta 1 para indicador ↑ si scroll > 0, y 1 para ↓)
+                        content_budget = max(2, row_budget - 2)
+                        scroll = _scroll_for_last(data, selected, content_budget)
                 habit_list = _render()
                 continue
 
@@ -90,7 +126,7 @@ def main():
                     _quick_counter(data, habit_list[selected], -1)
                 habit_list = _render()
 
-            # ── Bug 2: live.stop/start alrededor de cada pantalla ──
+            # ── live.stop/start alrededor de cada pantalla ───────────
             elif key in ("a", "A"):
                 last_undo = None
                 live.stop()
