@@ -13,7 +13,8 @@ from constants import (P, BADGES, SPARKS, HABIT_COLORS, SLEEP_COLORS, EVENT_TYPE
                        HEAT_COLORS, _DIAS, _MESES, console)
 from data import (overall_today, weekly_stats, get_streak, get_rate, get_badge,
                   sparkline_vals, make_spark, sleep_color, _build_ordered, _is_done,
-                  _event_matches, _period_rate, _avg_rate_month, _heat_intensity)
+                  _event_matches, _period_rate, _avg_rate_month, _heat_intensity,
+                  _build_navigable)
 
 
 def _hr(c=None):
@@ -49,7 +50,7 @@ def pct_bar(pct, width=10):
     t = Text()
     t.append("█" * filled, style=f"bold {color}")
     t.append("░" * (width - filled), style="dim")
-    t.append(f" {pct:4.0f}%", style=color)
+    t.append(f" {pct:.0f}%", style=color)
     return t
 
 
@@ -110,55 +111,37 @@ def make_today_strip(data):
     return Panel(Align.center(t), border_style=P["border"], padding=(0, 0))
 
 
-def make_habits_panel(data, selected_idx, scroll=0, row_budget=None):
-    """Renderiza el panel de hábitos con scroll virtual.
+def make_habits_panel(data, cursor, scroll=0, row_budget=None):
+    """Renderiza el panel de hábitos con scroll virtual centrado.
 
-    ``row_budget`` es el nº total de filas disponibles para el contenido
-    de la tabla (hábitos + cabeceras de categoría + indicadores de scroll).
-    Cada fila —sea hábito o cabecera de categoría— consume 1 unidad del
-    presupuesto, por lo que el resultado nunca desbordará el espacio del panel.
+    ``cursor``     — índice del item seleccionado en la lista navegable.
+    ``scroll``     — índice del primer item visible en la lista navegable.
+    ``row_budget`` — filas disponibles para el contenido del panel
+                     (header + strip + keys + bordes ya descontados en main).
+
+    Cada item navegable ocupa exactamente 1 fila de tabla, lo que hace
+    el cálculo de scroll trivial y preciso (sin desbordamientos).
     """
     from data import _today
     ds = _today()
-    ordered = _build_ordered(data)
 
-    # ── Presupuesto de filas ────────────────────────────────────────
-    total_habits = sum(1 for k, _, _ in ordered if k == "HABIT")
+    nav = _build_navigable(data)          # lista unificada CAT + HABIT
+    collapsed_cats = set(data.get("collapsed_cats", []))
+    total = len(nav)
+
     if row_budget is None:
-        row_budget = total_habits + 50          # sin límite efectivo
-    scroll = max(0, scroll)
+        row_budget = total + 50
+    # Reservar 2 filas para indicadores ↑ / ↓
+    content_budget = max(2, row_budget - 2)
+    scroll = max(0, min(scroll, max(0, total - content_budget)))
 
-    # Reservamos 1 fila para el indicador ↓ (puede que no se use,
-    # pero así garantizamos que nunca sobrepasamos el presupuesto).
-    content_budget = max(2, row_budget - 1)
-    if scroll > 0:
-        content_budget -= 1                     # 1 fila para el indicador ↑
+    end = min(total, scroll + content_budget)
+    visible = nav[scroll:end]
+    last_visible_cursor = end - 1 if end > 0 else 0
 
-    # Pre-pase: qué hábitos e índices entran en la ventana visible
-    # Cada nueva categoría cuesta 1 fila (cabecera); cada hábito cuesta 1.
-    visible_idxs: list[int] = []
-    seen_cats_pass: dict = {}
-    hi = 0
-    rows_used = 0
-    for kind, cat, h in ordered:
-        if kind != "HABIT":
-            continue
-        if hi < scroll:
-            hi += 1
-            continue
-        cat_cost = 1 if cat not in seen_cats_pass else 0
-        if rows_used + cat_cost + 1 > content_budget:
-            break
-        seen_cats_pass[cat] = True
-        rows_used += cat_cost + 1
-        visible_idxs.append(hi)
-        hi += 1
-
-    visible_set = set(visible_idxs)
-    last_visible_idx = visible_idxs[-1] if visible_idxs else scroll - 1
-
-    # ── Construcción de la tabla ────────────────────────────────────
-    table = Table(box=box.SIMPLE_HEAD, show_header=True, header_style=f"bold {P['blue']}",
+    # ── Tabla ───────────────────────────────────────────────────────
+    table = Table(box=box.SIMPLE_HEAD, show_header=True,
+                  header_style=f"bold {P['blue']}",
                   border_style=P["border"], expand=True)
     table.add_column("", width=2)
     table.add_column("Hábito", min_width=17)
@@ -168,78 +151,99 @@ def make_habits_panel(data, selected_idx, scroll=0, row_budget=None):
     table.add_column("🔥", width=4, justify="center")
     table.add_column("Badge", width=12, justify="center")
     table.add_column("Spark", width=22)
-    table.add_column("Tasa", width=11)
+    table.add_column("Tasa", width=13)
+
     type_lbl = {
         "boolean": f"[{P['blue']}]bool[/{P['blue']}]",
         "counter": f"[{P['teal']}]cnt[/{P['teal']}]",
-        "rating": f"[{P['yellow']}]rate[/{P['yellow']}]",
-        "note": f"[{P['purple']}]note[/{P['purple']}]",
+        "rating":  f"[{P['yellow']}]rate[/{P['yellow']}]",
+        "note":    f"[{P['purple']}]note[/{P['purple']}]",
     }
 
-    # Indicador scroll ↑
+    # ↑ indicador
     if scroll > 0:
-        table.add_row("", f"[dim]  ↑  {scroll} hábito(s) más arriba[/dim]",
+        table.add_row("", f"[dim]  ↑  {scroll} elemento(s) más arriba[/dim]",
                       "", "", "", "", "", "", "")
 
-    habit_list, habit_idx = [], 0
-    for kind, cat, h in ordered:
-        if kind == "CAT":
-            if cat in seen_cats_pass:
-                n_cat = sum(1 for k, c, _ in ordered if k == "HABIT" and c == cat)
-                lbl = (f"[bold {P['teal']}]╸ {cat.upper()}[/bold {P['teal']}]"
-                       f" [dim]({n_cat})[/dim]")
-                table.add_row("", lbl, "", "", "", "", "", "", "",
-                              style=f"on {P['surf']}")
-        else:
-            if habit_idx in visible_set:
-                is_sel = (habit_idx == selected_idx)
-                val = data["logs"].get(ds, {}).get(str(h["id"]))
-                done = _is_done(val, h)
-                streak = get_streak(data, h["id"])
-                rate = get_rate(data, h["id"])
-                e_b, n_b, c_b = get_badge(streak)
-                sparks = make_spark(sparkline_vals(data, h["id"]))
-                htype = h.get("type", "boolean")
-                target = h.get("target")
-                if htype == "boolean":
-                    tv = "✅" if done else "⬜"
-                elif htype == "counter":
-                    tv = f"{val or 0}/{target or '?'}"
-                elif htype == "rating":
-                    tv = "⭐" * int(val or 0) or "—"
-                elif htype == "note":
-                    tv = "📝" if done else "—"
-                else:
-                    tv = str(val or "—")
-                cursor = f"[bold {P['blue']}]▶[/bold {P['blue']}]" if is_sel else " "
-                rs = f"on {P['sel']}" if is_sel else ""
-                sc_t = Text(str(streak),
-                            style=f"bold {P['orange']}" if streak >= 10
-                            else f"{P['yellow']}" if streak > 0 else "dim")
-                table.add_row(
-                    cursor, h["name"], f"[dim]{h.get('category', '')[:8]}[/dim]",
-                    type_lbl.get(htype, htype), tv, sc_t,
-                    Text(f"{e_b} {n_b}", style=f"bold {c_b}"),
-                    Text(sparks, style=P["teal"] if done else P["muted"]),
-                    pct_bar(rate, 8), style=rs)
-            # habit_list recoge TODOS para mantener los índices correctos en main.py
-            habit_list.append(h)
-            habit_idx += 1
+    for i, (kind, cat, h) in enumerate(visible):
+        abs_idx = scroll + i
+        is_sel = (abs_idx == cursor)
+        cur_mark = f"[bold {P['blue']}]▶[/bold {P['blue']}]" if is_sel else " "
 
-    # Indicador scroll ↓
-    remaining = total_habits - (last_visible_idx + 1)
+        if kind == "CAT":
+            # ── Fila de categoría ──────────────────────────────────
+            collapsed = cat in collapsed_cats
+            icon = "▶" if collapsed else "▼"
+            n_total = sum(1 for k, c, _ in _build_navigable({"habits": data["habits"],
+                                                              "categories": data.get("categories", []),
+                                                              "collapsed_cats": []})
+                          if k == "HABIT" and c == cat)
+            lbl = Text()
+            lbl.append(f"{icon} ", style=f"bold {P['teal']}")
+            lbl.append(cat.upper(), style=f"bold {P['teal']}")
+            lbl.append(f" ({n_total})", style="dim")
+            if collapsed:
+                lbl.append("  — ocultos", style=f"dim {P['muted']}")
+            row_style = f"on {P['sel']}" if is_sel else f"on {P['surf']}"
+            table.add_row(cur_mark, lbl, "", "", "", "", "", "", "",
+                          style=row_style)
+
+        else:
+            # ── Fila de hábito ─────────────────────────────────────
+            val    = data["logs"].get(ds, {}).get(str(h["id"]))
+            done   = _is_done(val, h)
+            streak = get_streak(data, h["id"])
+            rate   = get_rate(data, h["id"])
+            e_b, n_b, c_b = get_badge(streak)
+            sparks = make_spark(sparkline_vals(data, h["id"]))
+            htype  = h.get("type", "boolean")
+            target = h.get("target")
+
+            if htype == "boolean":
+                tv = "✅" if done else "⬜"
+            elif htype == "counter":
+                tv = f"{val or 0}/{target or '?'}"
+            elif htype == "rating":
+                tv = "⭐" * int(val or 0) or "—"
+            elif htype == "note":
+                tv = "📝" if done else "—"
+            else:
+                tv = str(val or "—")
+
+            sc_t = Text(str(streak),
+                        style=f"bold {P['orange']}" if streak >= 10
+                        else f"{P['yellow']}" if streak > 0 else "dim")
+
+            # Nombre con indicador de estrella
+            name_cell = Text()
+            if h.get("starred"):
+                name_cell.append("★ ", style=f"bold {P['yellow']}")
+            name_cell.append(h["name"])
+
+            rs = f"on {P['sel']}" if is_sel else ""
+            table.add_row(
+                cur_mark, name_cell,
+                f"[dim]{h.get('category', '')[:8]}[/dim]",
+                type_lbl.get(htype, htype), tv, sc_t,
+                Text(f"{e_b} {n_b}", style=f"bold {c_b}"),
+                Text(sparks, style=P["teal"] if done else P["muted"]),
+                pct_bar(rate, 8), style=rs)
+
+    # ↓ indicador
+    remaining = total - end
     if remaining > 0:
-        table.add_row("", f"[dim]  ↓  {remaining} hábito(s) más abajo[/dim]",
+        table.add_row("", f"[dim]  ↓  {remaining} elemento(s) más abajo[/dim]",
                       "", "", "", "", "", "", "")
 
     if not data["habits"]:
         table.add_row("", "[dim]Sin hábitos · A para añadir[/dim]",
                       "", "", "", "", "", "", "")
 
-    return (Panel(table, title=f"[bold {P['blue']}]📋  HÁBITOS DIARIOS[/bold {P['blue']}]",
+    return (Panel(table,
+                  title=f"[bold {P['blue']}]📋  HÁBITOS DIARIOS[/bold {P['blue']}]",
                   border_style=P["border"], padding=(0, 1)),
-            habit_list,
-            last_visible_idx)
+            nav,
+            last_visible_cursor)
 
 
 def make_charts_panel(data):
@@ -314,7 +318,7 @@ def make_keys_panel(screen="main"):
         [("A", "Añadir"), ("E", "Editar"), ("D", "Eliminar"), ("H", "Historial")],
         [("C", "Calendario"), ("S", "Sueño"), ("J", "Diario"), ("G", "Objetivos")],
         [("V", "Eventos"), ("M", "Heatmap"), ("O", "Reordenar"), ("X", "Exportar")],
-        [("Q", "Salir"), ("", ""), ("", ""), ("", "")],
+        [("Tab", "Colapsar cat."), ("*", "Destacar hábito"), ("Q", "Salir"), ("", "")],
     ],
         "calendar": [("←→", "Mes ant/sig"), ("Q", "Volver")],
         "sleep": [("←→", "Mes ant/sig"), ("L", "Registrar sueño"), ("Q", "Volver")],
@@ -410,8 +414,8 @@ def make_mini_calendar(data, year=None, month=None):
                  border_style=P["border"], padding=(0, 1))
 
 
-def build_main_layout(data, selected, scroll=0, row_budget=None):
-    habits_panel, habit_list, last_vis = make_habits_panel(data, selected, scroll, row_budget)
+def build_main_layout(data, cursor, scroll=0, row_budget=None):
+    habits_panel, nav, last_vis = make_habits_panel(data, cursor, scroll, row_budget)
     today = date.today()
     _, n_days = monthrange(today.year, today.month)
     ev_count = sum(1 for ev in data.get("events", [])
@@ -429,4 +433,4 @@ def build_main_layout(data, selected, scroll=0, row_budget=None):
         Layout(make_charts_panel(data), name="charts", ratio=2),
         Layout(make_mini_calendar(data), name="minical", size=cal_size),
     )
-    return layout, habit_list, last_vis
+    return layout, nav, last_vis

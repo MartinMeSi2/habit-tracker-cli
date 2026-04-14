@@ -28,6 +28,9 @@ def load_data():
         d.setdefault("next_goal_id", 1)
         d.setdefault("events", [])
         d.setdefault("next_event_id", 1)
+        d.setdefault("collapsed_cats", [])
+        for h in d.get("habits", []):
+            h.setdefault("starred", False)
         return d
     s = {"events": [], "next_event_id": 1, "habits": [
         {"id": 1, "name": "Despertar a las 6am", "created": _today(), "color": "#ffd93d", "type": "boolean", "target": None, "category": "Salud"},
@@ -40,7 +43,8 @@ def load_data():
         {"id": 8, "name": "Nota del día", "created": _today(), "color": "#cc5de8", "type": "note", "target": None, "category": "Personal"},
         {"id": 9, "name": "Caminar 10k", "created": _today(), "color": "#4d96ff", "type": "counter", "target": 10000, "category": "Salud"},
     ], "logs": {}, "next_id": 10, "categories": DEFAULT_CATS[:],
-        "sleep": {}, "journal": {}, "goals": [], "next_goal_id": 1}
+        "sleep": {}, "journal": {}, "goals": [], "next_goal_id": 1,
+        "collapsed_cats": []}
     save_data(s)
     return s
 
@@ -216,6 +220,23 @@ def _build_ordered(data):
         for h in others:
             ordered.append(("HABIT", "Otros", h))
     return ordered
+
+
+def _build_navigable(data):
+    """Lista de items navegables: cabeceras de categoría + hábitos no colapsados.
+
+    Cada elemento es ``(kind, cat, h)`` igual que ``_build_ordered``.
+    Las categorías en ``data["collapsed_cats"]`` ocultan sus hábitos pero
+    mantienen la fila de cabecera para poder volver a expandirlas.
+    """
+    collapsed = set(data.get("collapsed_cats", []))
+    result = []
+    for kind, cat, h in _build_ordered(data):
+        if kind == "CAT":
+            result.append((kind, cat, h))
+        elif kind == "HABIT" and cat not in collapsed:
+            result.append((kind, cat, h))
+    return result
 
 
 def sleep_color(hours):

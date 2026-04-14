@@ -32,4 +32,6 @@ _DIAS=["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"]
 _MESES=["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"]
 DATA_FILE=Path("habits_data.json")
 DEFAULT_CATS=["Salud","Trabajo","Personal","Aprendizaje"]
-console=Console(legacy_windows=False)
+APP_WIDTH  = 180      # ancho fijo de la aplicación (columnas)
+APP_HEIGHT = 55       # alto mínimo recomendado (filas)
+console=Console(width=APP_WIDTH, legacy_windows=False)

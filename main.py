@@ -4,8 +4,8 @@ import sys
 from contextlib import contextmanager
 import readchar
 from rich.live import Live
-from constants import P, console
-from data import load_data, save_data, _today, _build_ordered
+from constants import P, console, APP_WIDTH, APP_HEIGHT
+from data import load_data, save_data, _today, _build_navigable
 from render import build_main_layout
 from screens import (form_habit, action_check, action_delete, action_export,
                      screen_calendar, screen_sleep, screen_journal, screen_goals,
@@ -13,103 +13,133 @@ from screens import (form_habit, action_check, action_delete, action_export,
                      _quick_counter)
 
 
-def _scroll_for_last(data, target_idx, content_budget):
-    """Devuelve el mínimo `scroll` para que `target_idx` sea el último hábito visible.
+def _centered_scroll(nav_len, cursor, content_budget):
+    """Scroll que deja ``cursor`` centrado en la ventana visible."""
+    half = content_budget // 2
+    return max(0, min(cursor - half, nav_len - content_budget))
 
-    Recorre la lista de hábitos hacia atrás desde `target_idx`, contando el
-    coste de cada fila (1 por hábito + 1 extra la primera vez que aparece una
-    categoría) hasta agotar el presupuesto de contenido.  El índice donde se
-    detiene es el primer hábito visible → ese es el nuevo scroll.
+
+def _resize_terminal():
+    """Intenta redimensionar el terminal a APP_WIDTH × APP_HEIGHT.
+
+    Usa la secuencia xterm \033[8;<rows>;<cols>t, soportada por la mayoría
+    de emuladores modernos (Windows Terminal, ConEmu, iTerm2, GNOME Terminal…).
+    Tras enviarla espera un instante para que el SO aplique el cambio.
     """
-    ordered = _build_ordered(data)
-    habits = [(cat, h) for kind, cat, h in ordered if kind == "HABIT"]
-    rows = 0
-    seen_cats: set = set()
-    first = target_idx
-    for i in range(target_idx, -1, -1):
-        if i >= len(habits):
-            continue
-        cat = habits[i][0]
-        cat_cost = 1 if cat not in seen_cats else 0
-        if rows + cat_cost + 1 > content_budget:
-            break
-        seen_cats.add(cat)
-        rows += cat_cost + 1
-        first = i
-    return first
+    import time
+    sys.stdout.write(f"\033[8;{APP_HEIGHT};{APP_WIDTH}t")
+    sys.stdout.flush()
+    time.sleep(0.15)   # pequeña pausa para que el SO procese el resize
 
 
 def main():
+    _resize_terminal()
     data = load_data()
-    selected = 0
-    scroll = 0
-    last_vis = 0        # último índice de hábito visible (actualizado en _render)
+    cursor   = 0      # índice sobre la lista navegable (CAT + HABIT visibles)
+    scroll   = 0      # primer índice visible en la tabla
+    last_vis = 0      # último índice visible (actualizado por _render)
     last_undo = None
 
     with Live(screen=True, auto_refresh=False, console=console) as live:
 
         def _render():
             nonlocal last_vis
-            # Filas disponibles para el contenido del panel de hábitos:
-            # total - header(3) - strip(4) - keys(9) - bordes panel(2) - cabecera tabla(2)
             row_budget = max(5, console.size.height - 20)
-            layout, hl, lv = build_main_layout(data, selected, scroll, row_budget)
+            layout, nav, lv = build_main_layout(data, cursor, scroll, row_budget)
             last_vis = lv
             live.update(layout)
             live.refresh()
-            return hl
+            return nav
 
         @contextmanager
         def _subscreen():
-            """Pausa Live y ejecuta la sub-pantalla en el buffer alternado limpio.
-
-            Así las sub-pantallas no acumulan historial de interacciones en el
-            buffer primario del terminal, igual que la pantalla principal.
-            """
-            live.stop()                    # sale del buffer alternado de Live
-            console.set_alt_screen(True)   # entra en buffer alternado limpio
+            """Pausa Live y corre la sub-pantalla en buffer alternado limpio."""
+            live.stop()
+            console.set_alt_screen(True)
             try:
                 yield
             finally:
-                console.set_alt_screen(False)  # sale del buffer alternado
-                live.start(refresh=False)      # Live vuelve a su buffer alternado
+                console.set_alt_screen(False)
+                live.start(refresh=False)
 
-        habit_list = _render()
+        def _recenter(nav):
+            """Recalcula scroll para centrar ``cursor`` si está fuera de vista."""
+            nonlocal scroll
+            row_budget     = max(5, console.size.height - 20)
+            content_budget = max(2, row_budget - 2)
+            if cursor < scroll or cursor > last_vis:
+                scroll = _centered_scroll(len(nav), cursor, content_budget)
+
+        nav = _render()
 
         while True:
-            n = len(habit_list)
+            n = len(nav)
 
-            # ── Clamp: selected siempre dentro del rango válido ──────
-            new_sel = max(0, min(selected, n - 1)) if n > 0 else 0
-            if new_sel != selected:
-                selected = new_sel
-                habit_list = _render()
-                n = len(habit_list)
+            # ── Clamp cursor ─────────────────────────────────────────
+            new_cur = max(0, min(cursor, n - 1)) if n > 0 else 0
+            if new_cur != cursor:
+                cursor = new_cur
+                nav = _render()
+                n = len(nav)
 
             key = readchar.readkey()
 
-            # ── Navegación ↑↓ con scroll automático ─────────────────
+            # ── ↑ ────────────────────────────────────────────────────
             if key == readchar.key.UP:
                 if n:
-                    selected = max(0, selected - 1)
-                    if selected < scroll:
-                        scroll = selected
-                habit_list = _render()
+                    cursor = n - 1 if cursor == 0 else cursor - 1
+                    _recenter(nav)
+                nav = _render()
                 continue
 
+            # ── ↓ ────────────────────────────────────────────────────
             if key == readchar.key.DOWN:
                 if n:
-                    selected = min(n - 1, selected + 1)
-                    if selected > last_vis:
-                        row_budget = max(5, console.size.height - 20)
-                        content_budget = max(2, row_budget - 2)
-                        scroll = _scroll_for_last(data, selected, content_budget)
-                habit_list = _render()
+                    cursor = 0 if cursor == n - 1 else cursor + 1
+                    _recenter(nav)
+                nav = _render()
                 continue
 
+            # ── Q: salir ─────────────────────────────────────────────
             if key in ("q", "Q"):
                 break
 
+            # ── TAB: colapsar / expandir categoría ───────────────────
+            elif key == "\t":
+                if n and 0 <= cursor < n:
+                    kind, cat, h = nav[cursor]
+                    # Si estamos en un hábito, buscamos la categoría padre
+                    if kind == "HABIT":
+                        cat_idx = next(
+                            (i for i in range(cursor, -1, -1)
+                             if nav[i][0] == "CAT" and nav[i][1] == cat),
+                            None)
+                        if cat_idx is not None:
+                            cursor = cat_idx
+                        kind, cat, _ = nav[cursor]
+                    if kind == "CAT":
+                        collapsed = data.setdefault("collapsed_cats", [])
+                        if cat in collapsed:
+                            collapsed.remove(cat)
+                        else:
+                            collapsed.append(cat)
+                        save_data(data)
+                        nav = _render()
+                        n   = len(nav)
+                        cursor = max(0, min(cursor, n - 1))
+                        _recenter(nav)
+                nav = _render()
+
+            # ── * : marcar / desmarcar hábito como destacado ──────────
+            elif key == "*":
+                if n and 0 <= cursor < n:
+                    kind, cat, h = nav[cursor]
+                    if kind == "HABIT":
+                        h["starred"] = not h.get("starred", False)
+                        save_data(data)
+                nav = _render()
+
+            # ── U: deshacer ──────────────────────────────────────────
             elif key in ("u", "U"):
                 if last_undo:
                     ds, hid, prev = last_undo["ds"], last_undo["hid"], last_undo["prev"]
@@ -119,104 +149,119 @@ def main():
                         data["logs"][ds][hid] = prev
                     save_data(data)
                 last_undo = None
-                habit_list = _render()
+                nav = _render()
 
+            # ── ENTER: check / registrar valor ───────────────────────
             elif key in ("\r", "\n", readchar.key.ENTER):
                 last_undo = None
-                if habit_list and 0 <= selected < n:
-                    last_undo = action_check(data, habit_list[selected])
-                habit_list = _render()
+                if n and 0 <= cursor < n:
+                    kind, cat, h = nav[cursor]
+                    if kind == "HABIT":
+                        last_undo = action_check(data, h)
+                nav = _render()
 
+            # ── + / - : contador rápido ──────────────────────────────
             elif key in ("+", "="):
                 last_undo = None
-                if habit_list and 0 <= selected < n and habit_list[selected].get("type") == "counter":
-                    _quick_counter(data, habit_list[selected], +1)
-                habit_list = _render()
+                if n and 0 <= cursor < n:
+                    kind, cat, h = nav[cursor]
+                    if kind == "HABIT" and h.get("type") == "counter":
+                        _quick_counter(data, h, +1)
+                nav = _render()
 
             elif key == "-":
                 last_undo = None
-                if habit_list and 0 <= selected < n and habit_list[selected].get("type") == "counter":
-                    _quick_counter(data, habit_list[selected], -1)
-                habit_list = _render()
+                if n and 0 <= cursor < n:
+                    kind, cat, h = nav[cursor]
+                    if kind == "HABIT" and h.get("type") == "counter":
+                        _quick_counter(data, h, -1)
+                nav = _render()
 
-            # ── Sub-pantallas: cada una en su propio buffer alternado ─
+            # ── Sub-pantallas ─────────────────────────────────────────
             elif key in ("a", "A"):
                 last_undo = None
                 with _subscreen():
                     form_habit(data)
-                habit_list = _render()
+                nav = _render()
 
             elif key in ("e", "E"):
                 last_undo = None
-                if habit_list and 0 <= selected < n:
-                    with _subscreen():
-                        form_habit(data, existing=habit_list[selected])
-                habit_list = _render()
+                if n and 0 <= cursor < n:
+                    kind, cat, h = nav[cursor]
+                    if kind == "HABIT":
+                        with _subscreen():
+                            form_habit(data, existing=h)
+                nav = _render()
 
             elif key in ("d", "D"):
                 last_undo = None
-                if habit_list and 0 <= selected < n:
-                    with _subscreen():
-                        deleted = action_delete(data, habit_list[selected])
-                    if deleted:
-                        selected = max(0, selected - 1)
-                        scroll = max(0, min(scroll, selected))
-                habit_list = _render()
+                if n and 0 <= cursor < n:
+                    kind, cat, h = nav[cursor]
+                    if kind == "HABIT":
+                        with _subscreen():
+                            deleted = action_delete(data, h)
+                        if deleted:
+                            cursor = max(0, cursor - 1)
+                            nav    = _render()
+                            scroll = max(0, min(scroll, cursor))
+                nav = _render()
 
             elif key in ("h", "H"):
                 last_undo = None
-                if habit_list and 0 <= selected < n:
-                    with _subscreen():
-                        screen_history(data, habit_list[selected])
-                habit_list = _render()
+                if n and 0 <= cursor < n:
+                    kind, cat, h = nav[cursor]
+                    if kind == "HABIT":
+                        with _subscreen():
+                            screen_history(data, h)
+                nav = _render()
 
             elif key in ("c", "C"):
                 last_undo = None
                 with _subscreen():
                     screen_calendar(data)
-                habit_list = _render()
+                nav = _render()
 
             elif key in ("s", "S"):
                 last_undo = None
                 with _subscreen():
                     screen_sleep(data)
-                habit_list = _render()
+                nav = _render()
 
             elif key in ("j", "J"):
                 last_undo = None
                 with _subscreen():
                     screen_journal(data)
-                habit_list = _render()
+                nav = _render()
 
             elif key in ("g", "G"):
                 last_undo = None
                 with _subscreen():
                     screen_goals(data)
-                habit_list = _render()
+                nav = _render()
 
             elif key in ("v", "V"):
                 last_undo = None
                 with _subscreen():
                     screen_events(data)
-                habit_list = _render()
+                nav = _render()
 
             elif key in ("o", "O"):
                 last_undo = None
                 with _subscreen():
                     screen_reorder(data)
-                habit_list = _render()
+                nav = _render()
 
             elif key in ("x", "X"):
                 last_undo = None
                 with _subscreen():
                     action_export(data)
-                habit_list = _render()
+                nav = _render()
 
             elif key in ("m", "M"):
                 last_undo = None
                 with _subscreen():
                     screen_heatmap(data)
-                habit_list = _render()
+                nav = _render()
 
     console.print(f"\n  [bold {P['blue']}]👋  ¡Hasta mañana![/bold {P['blue']}]\n")
 
