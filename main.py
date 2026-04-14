@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Punto de entrada del Habit Tracker v3 — versión modular."""
 import sys
+from contextlib import contextmanager
 import readchar
 from rich.live import Live
 from constants import P, console
@@ -58,6 +59,21 @@ def main():
             live.refresh()
             return hl
 
+        @contextmanager
+        def _subscreen():
+            """Pausa Live y ejecuta la sub-pantalla en el buffer alternado limpio.
+
+            Así las sub-pantallas no acumulan historial de interacciones en el
+            buffer primario del terminal, igual que la pantalla principal.
+            """
+            live.stop()                    # sale del buffer alternado de Live
+            console.set_alt_screen(True)   # entra en buffer alternado limpio
+            try:
+                yield
+            finally:
+                console.set_alt_screen(False)  # sale del buffer alternado
+                live.start(refresh=False)      # Live vuelve a su buffer alternado
+
         habit_list = _render()
 
         while True:
@@ -85,10 +101,7 @@ def main():
                 if n:
                     selected = min(n - 1, selected + 1)
                     if selected > last_vis:
-                        # Calcular el scroll mínimo para que selected quede visible
                         row_budget = max(5, console.size.height - 20)
-                        # content_budget: igual que en make_habits_panel
-                        # (se resta 1 para indicador ↑ si scroll > 0, y 1 para ↓)
                         content_budget = max(2, row_budget - 2)
                         scroll = _scroll_for_last(data, selected, content_budget)
                 habit_list = _render()
@@ -126,28 +139,25 @@ def main():
                     _quick_counter(data, habit_list[selected], -1)
                 habit_list = _render()
 
-            # ── live.stop/start alrededor de cada pantalla ───────────
+            # ── Sub-pantallas: cada una en su propio buffer alternado ─
             elif key in ("a", "A"):
                 last_undo = None
-                live.stop()
-                form_habit(data)
-                live.start(refresh=False)
+                with _subscreen():
+                    form_habit(data)
                 habit_list = _render()
 
             elif key in ("e", "E"):
                 last_undo = None
                 if habit_list and 0 <= selected < n:
-                    live.stop()
-                    form_habit(data, existing=habit_list[selected])
-                    live.start(refresh=False)
+                    with _subscreen():
+                        form_habit(data, existing=habit_list[selected])
                 habit_list = _render()
 
             elif key in ("d", "D"):
                 last_undo = None
                 if habit_list and 0 <= selected < n:
-                    live.stop()
-                    deleted = action_delete(data, habit_list[selected])
-                    live.start(refresh=False)
+                    with _subscreen():
+                        deleted = action_delete(data, habit_list[selected])
                     if deleted:
                         selected = max(0, selected - 1)
                         scroll = max(0, min(scroll, selected))
@@ -156,65 +166,56 @@ def main():
             elif key in ("h", "H"):
                 last_undo = None
                 if habit_list and 0 <= selected < n:
-                    live.stop()
-                    screen_history(data, habit_list[selected])
-                    live.start(refresh=False)
+                    with _subscreen():
+                        screen_history(data, habit_list[selected])
                 habit_list = _render()
 
             elif key in ("c", "C"):
                 last_undo = None
-                live.stop()
-                screen_calendar(data)
-                live.start(refresh=False)
+                with _subscreen():
+                    screen_calendar(data)
                 habit_list = _render()
 
             elif key in ("s", "S"):
                 last_undo = None
-                live.stop()
-                screen_sleep(data)
-                live.start(refresh=False)
+                with _subscreen():
+                    screen_sleep(data)
                 habit_list = _render()
 
             elif key in ("j", "J"):
                 last_undo = None
-                live.stop()
-                screen_journal(data)
-                live.start(refresh=False)
+                with _subscreen():
+                    screen_journal(data)
                 habit_list = _render()
 
             elif key in ("g", "G"):
                 last_undo = None
-                live.stop()
-                screen_goals(data)
-                live.start(refresh=False)
+                with _subscreen():
+                    screen_goals(data)
                 habit_list = _render()
 
             elif key in ("v", "V"):
                 last_undo = None
-                live.stop()
-                screen_events(data)
-                live.start(refresh=False)
+                with _subscreen():
+                    screen_events(data)
                 habit_list = _render()
 
             elif key in ("o", "O"):
                 last_undo = None
-                live.stop()
-                screen_reorder(data)
-                live.start(refresh=False)
+                with _subscreen():
+                    screen_reorder(data)
                 habit_list = _render()
 
             elif key in ("x", "X"):
                 last_undo = None
-                live.stop()
-                action_export(data)
-                live.start(refresh=False)
+                with _subscreen():
+                    action_export(data)
                 habit_list = _render()
 
             elif key in ("m", "M"):
                 last_undo = None
-                live.stop()
-                screen_heatmap(data)
-                live.start(refresh=False)
+                with _subscreen():
+                    screen_heatmap(data)
                 habit_list = _render()
 
     console.print(f"\n  [bold {P['blue']}]👋  ¡Hasta mañana![/bold {P['blue']}]\n")
