@@ -110,7 +110,7 @@ def make_today_strip(data):
     return Panel(Align.center(t), border_style=P["border"], padding=(0, 0))
 
 
-def make_habits_panel(data, selected_idx):
+def make_habits_panel(data, selected_idx, scroll=0, visible_count=None):
     from data import _today
     ds = _today()
     ordered = _build_ordered(data)
@@ -131,43 +131,77 @@ def make_habits_panel(data, selected_idx):
         "rating": f"[{P['yellow']}]rate[/{P['yellow']}]",
         "note": f"[{P['purple']}]note[/{P['purple']}]",
     }
+
+    # ── Scroll virtual ──────────────────────────────────────────────
+    total_habits = sum(1 for k, _, _ in ordered if k == "HABIT")
+    if visible_count is None:
+        visible_count = total_habits
+    scroll = max(0, min(scroll, max(0, total_habits - visible_count)))
+    end = scroll + visible_count
+
+    # Pre-pase: qué categorías tienen al menos un hábito en la ventana visible
+    cat_visible: dict = {}
+    hi = 0
+    for kind, cat, h in ordered:
+        if kind == "HABIT":
+            if scroll <= hi < end:
+                cat_visible[cat] = True
+            hi += 1
+
+    # Indicador de scroll hacia arriba
+    if scroll > 0:
+        table.add_row(
+            "", f"[dim]  ↑  {scroll} hábito(s) más arriba[/dim]",
+            "", "", "", "", "", "", "")
+
     habit_list, habit_idx = [], 0
     for kind, cat, h in ordered:
         if kind == "CAT":
-            n_cat = sum(1 for k, c, _ in ordered if k == "HABIT" and c == cat)
-            lbl = f"[bold {P['teal']}]╸ {cat.upper()}[/bold {P['teal']}] [dim]({n_cat})[/dim]"
-            table.add_row("", lbl, "", "", "", "", "", "", "", style=f"on {P['surf']}")
+            if cat_visible.get(cat, False):
+                n_cat = sum(1 for k, c, _ in ordered if k == "HABIT" and c == cat)
+                lbl = f"[bold {P['teal']}]╸ {cat.upper()}[/bold {P['teal']}] [dim]({n_cat})[/dim]"
+                table.add_row("", lbl, "", "", "", "", "", "", "", style=f"on {P['surf']}")
         else:
-            is_sel = (habit_idx == selected_idx)
-            val = data["logs"].get(ds, {}).get(str(h["id"]))
-            done = _is_done(val, h)
-            streak = get_streak(data, h["id"])
-            rate = get_rate(data, h["id"])
-            e_b, n_b, c_b = get_badge(streak)
-            sparks = make_spark(sparkline_vals(data, h["id"]))
-            htype = h.get("type", "boolean")
-            target = h.get("target")
-            if htype == "boolean":
-                tv = "✅" if done else "⬜"
-            elif htype == "counter":
-                tv = f"{val or 0}/{target or '?'}"
-            elif htype == "rating":
-                tv = "⭐" * int(val or 0) or "—"
-            elif htype == "note":
-                tv = "📝" if done else "—"
-            else:
-                tv = str(val or "—")
-            cursor = f"[bold {P['blue']}]▶[/bold {P['blue']}]" if is_sel else " "
-            rs = f"on {P['sel']}" if is_sel else ""
-            sc_t = Text(str(streak), style=f"bold {P['orange']}" if streak >= 10 else f"{P['yellow']}" if streak > 0 else "dim")
-            table.add_row(
-                cursor, h["name"], f"[dim]{h.get('category','')[:8]}[/dim]",
-                type_lbl.get(htype, htype), tv, sc_t,
-                Text(f"{e_b} {n_b}", style=f"bold {c_b}"),
-                Text(sparks, style=P["teal"] if done else P["muted"]),
-                pct_bar(rate, 8), style=rs)
+            if scroll <= habit_idx < end:
+                is_sel = (habit_idx == selected_idx)
+                val = data["logs"].get(ds, {}).get(str(h["id"]))
+                done = _is_done(val, h)
+                streak = get_streak(data, h["id"])
+                rate = get_rate(data, h["id"])
+                e_b, n_b, c_b = get_badge(streak)
+                sparks = make_spark(sparkline_vals(data, h["id"]))
+                htype = h.get("type", "boolean")
+                target = h.get("target")
+                if htype == "boolean":
+                    tv = "✅" if done else "⬜"
+                elif htype == "counter":
+                    tv = f"{val or 0}/{target or '?'}"
+                elif htype == "rating":
+                    tv = "⭐" * int(val or 0) or "—"
+                elif htype == "note":
+                    tv = "📝" if done else "—"
+                else:
+                    tv = str(val or "—")
+                cursor = f"[bold {P['blue']}]▶[/bold {P['blue']}]" if is_sel else " "
+                rs = f"on {P['sel']}" if is_sel else ""
+                sc_t = Text(str(streak), style=f"bold {P['orange']}" if streak >= 10 else f"{P['yellow']}" if streak > 0 else "dim")
+                table.add_row(
+                    cursor, h["name"], f"[dim]{h.get('category','')[:8]}[/dim]",
+                    type_lbl.get(htype, htype), tv, sc_t,
+                    Text(f"{e_b} {n_b}", style=f"bold {c_b}"),
+                    Text(sparks, style=P["teal"] if done else P["muted"]),
+                    pct_bar(rate, 8), style=rs)
+            # habit_list recoge TODOS los hábitos para mantener índices correctos
             habit_list.append(h)
             habit_idx += 1
+
+    # Indicador de scroll hacia abajo
+    remaining = total_habits - end
+    if remaining > 0:
+        table.add_row(
+            "", f"[dim]  ↓  {remaining} hábito(s) más abajo[/dim]",
+            "", "", "", "", "", "", "")
+
     if not data["habits"]:
         table.add_row("", "[dim]Sin hábitos · A para añadir[/dim]", "", "", "", "", "", "", "")
     return Panel(table, title=f"[bold {P['blue']}]📋  HÁBITOS DIARIOS[/bold {P['blue']}]",
@@ -342,8 +376,8 @@ def make_mini_calendar(data, year=None, month=None):
                  border_style=P["border"], padding=(0, 1))
 
 
-def build_main_layout(data, selected):
-    habits_panel, habit_list = make_habits_panel(data, selected)
+def build_main_layout(data, selected, scroll=0, visible_count=None):
+    habits_panel, habit_list = make_habits_panel(data, selected, scroll, visible_count)
     today = date.today()
     _, n_days = monthrange(today.year, today.month)
     ev_count = sum(1 for ev in data.get("events", [])
